@@ -13,3 +13,6 @@
 [submodule "src/ext/libzmq"]
 	path = src/ext/libzmq
 	url = https://github.com/zeromq/libzmq
+[submodule "src/ext/cppzmq"]
+	path = src/ext/cppzmq
+	url = https://github.com/zeromq/cppzmq.git

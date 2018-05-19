@@ -348,7 +348,7 @@ INCLUDE_DIRECTORIES ( src/ext/ptex/src/ptex )
 
 ###########################################################################
 # zmq
-FIND_LIBRARY(ZMQ_LIB libzmq)
+find_package(cppzmq)
 
 ###########################################################################
 # On to pbrt...
