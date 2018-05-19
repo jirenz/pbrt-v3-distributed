@@ -45,6 +45,7 @@
 #include "filter.h"
 #include "stats.h"
 #include "parallel.h"
+#include <iostream>
 
 namespace pbrt {
 
@@ -174,6 +175,12 @@ class FilmTile {
         return pixels[offset];
     }
     Bounds2i GetPixelBounds() const { return pixelBounds; }
+    const void * GetData() const {return (const void *) pixels.data();}
+    const size_t GetSize() const {return pixels.size() * sizeof(FilmTilePixel);}
+    const void Load(const void * data, size_t size) {
+        CHECK_EQ(size, GetSize()) << "filmTile size mismatch" << std::endl;
+        memcpy((void *) pixels.data(), data, size);
+    }
 
   private:
     // FilmTile Private Data

@@ -348,7 +348,8 @@ INCLUDE_DIRECTORIES ( src/ext/ptex/src/ptex )
 
 ###########################################################################
 # zmq
-find_package(cppzmq)
+ADD_SUBDIRECTORY(src/ext/libzmq)
+INCLUDE_DIRECTORIES(src/ext/cppzmq)
 
 ###########################################################################
 # On to pbrt...
@@ -357,6 +358,7 @@ SET ( PBRT_CORE_SOURCE
   src/core/api.cpp
   src/core/bssrdf.cpp
   src/core/camera.cpp
+  src/core/distributed.cpp
   src/core/efloat.cpp
   src/core/error.cpp
   src/core/fileutil.cpp
@@ -397,6 +399,7 @@ SET ( PBRT_CORE_HEADERS
   src/core/api.h
   src/core/bssrdf.h
   src/core/camera.h
+  src/core/distributed.h
   src/core/efloat.h
   src/core/error.h
   src/core/fileutil.h
@@ -490,7 +493,7 @@ SET(ALL_PBRT_LIBS
   glog
   Ptex_static
   ${ZLIB_LIBRARY}
-  ${ZMQ_LIB}
+  ${ZEROMQ_LIBRARY}
 )
 
 # Main renderer

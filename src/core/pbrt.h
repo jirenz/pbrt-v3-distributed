@@ -164,6 +164,7 @@ struct Matrix4x4;
 class ParamSet;
 template <typename T>
 struct ParamSetItem;
+enum DistributedStrategy { none, master, slave };
 struct Options {
     Options() {
         cropWindow[0][0] = 0;
@@ -178,6 +179,11 @@ struct Options {
     std::string imageFile;
     // x0, x1, y0, y1
     Float cropWindow[2][2];
+    DistributedStrategy distributedStrategy = DistributedStrategy::none;
+    int nWorkers = 0;
+    std::string host = "127.0.0.1";
+    std::string distContext = "default_context";
+    int port = 18348;
 };
 
 extern Options PbrtOptions;

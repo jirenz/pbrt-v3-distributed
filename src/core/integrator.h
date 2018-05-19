@@ -73,8 +73,6 @@ Spectrum EstimateDirect(const Interaction &it, const Point2f &uShading,
 std::unique_ptr<Distribution1D> ComputeLightPowerDistribution(
     const Scene &scene);
 
-enum DistributionStrategy { none, master, slave };
-
 // SamplerIntegrator Declarations
 class SamplerIntegrator : public Integrator {
   public:
@@ -82,8 +80,7 @@ class SamplerIntegrator : public Integrator {
     SamplerIntegrator(std::shared_ptr<const Camera> camera,
                       std::shared_ptr<Sampler> sampler,
                       const Bounds2i &pixelBounds)
-        : camera(camera), sampler(sampler), pixelBounds(pixelBounds),
-          distributionStrategy(none) {}
+        : camera(camera), sampler(sampler), pixelBounds(pixelBounds) {}
     virtual void Preprocess(const Scene &scene, Sampler &sampler) {}
     void Render(const Scene &scene);
     std::unique_ptr<FilmTile> RenderTile(const Scene &scene, const Bounds2i &sampleBounds, const Point2i &tile);
@@ -104,10 +101,13 @@ class SamplerIntegrator : public Integrator {
     std::shared_ptr<const Camera> camera;
 
   private:
+    Bounds2i TileBounds(const Bounds2i &sampleBounds, const Point2i &tile);
+    Point2i TileFromJobId(const Point2i& nTiles, const int job_id);
+    int JobIdFromTile(const Point2i& nTiles, const Point2i& tile);
+    const int tileSize = 16;
     // SamplerIntegrator Private Data
     std::shared_ptr<Sampler> sampler;
     const Bounds2i pixelBounds;
-    const DistributionStrategy distributionStrategy = none;
 };
 
 }  // namespace pbrt

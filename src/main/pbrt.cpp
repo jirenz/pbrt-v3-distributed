@@ -126,10 +126,38 @@ int main(int argc, char *argv[]) {
                 usage("missing value after --v argument");
             FLAGS_v = atoi(argv[++i]);
         } else if (!strncmp(argv[i], "--v=", 4)) {
-          FLAGS_v = atoi(argv[i] + 4);
-        }
-        else if (!strcmp(argv[i], "--logtostderr")) {
-          FLAGS_logtostderr = true;
+            FLAGS_v = atoi(argv[i] + 4);
+        } else if (!strcmp(argv[i], "--logtostderr")) {
+            FLAGS_logtostderr = true;
+        } else if (!strcmp(argv[i], "--dist-master") || !strcmp(argv[i], "-dist-master")) {
+            options.distributedStrategy = DistributedStrategy::master;
+            options.nThreads = 1; // Master process only needs on thread
+        } else if (!strcmp(argv[i], "--dist-slave") || !strcmp(argv[i], "-dist-slave")) {
+            options.distributedStrategy = DistributedStrategy::slave;
+        } else if (!strcmp(argv[i], "--dist-nworkers") || !strcmp(argv[i], "-dist-nworkers")) {
+            if (i + 1 == argc)
+                usage("missing value after --dist-nworkers argument");
+            options.nWorkers = atoi(argv[++i]);
+        } else if (!strncmp(argv[i], "--dist-nworkers=", 16)) {
+            options.nWorkers = atoi(argv[i] + 16);
+        } else if (!strcmp(argv[i], "--dist-host") || !strcmp(argv[i], "-dist-host")) {
+            if (i + 1 == argc)
+                usage("missing value after --dist-host argument");
+            options.host = argv[++i];
+        } else if (!strncmp(argv[i], "--dist-host=", 12)) {
+            options.host = argv[i] + 12;
+        } else if (!strcmp(argv[i], "--dist-port") || !strcmp(argv[i], "-dist-port")) {
+            if (i + 1 == argc)
+                usage("missing value after --dist-port argument");
+            options.port = atoi(argv[++i]);
+        } else if (!strncmp(argv[i], "--dist-port=", 12)) {
+            options.port = atoi(argv[i] + 12);
+        } else if (!strcmp(argv[i], "--dist-context") || !strcmp(argv[i], "-dist-context")) {
+            if (i + 1 == argc)
+                usage("missing value after --dist-context argument");
+            options.distContext = argv[++i];
+        } else if (!strncmp(argv[i], "--dist-context=", 15)) {
+            options.distContext = argv[i] + 15;
         } else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-help") ||
                    !strcmp(argv[i], "-h")) {
             usage();

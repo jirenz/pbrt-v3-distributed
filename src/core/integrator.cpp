@@ -42,7 +42,10 @@
 #include "progressreporter.h"
 #include "camera.h"
 #include "stats.h"
+#include "distributed.h"
+#include "pbrt.h"
 #include <zmq.hpp>
+#include <iostream>
 
 namespace pbrt {
 
@@ -228,8 +231,13 @@ std::unique_ptr<Distribution1D> ComputeLightPowerDistribution(
 // SamplerIntegrator Method Definitions
 void SamplerIntegrator::Render(const Scene &scene) {
     Preprocess(scene, *sampler); // TODO: preprocess needs to be fixed
+    
     // Render image tiles in parallel
-
+    
+    //Read distributed strategy from global
+    const DistributedStrategy strategy = PbrtOptions.distributedStrategy;
+    int n_workers = PbrtOptions.nWorkers;
+    
     // Compute number of tiles, _nTiles_, to use for parallel rendering
     Bounds2i sampleBounds = camera->film->GetSampleBounds(); // needed
     Vector2i sampleExtent = sampleBounds.Diagonal();
@@ -238,30 +246,35 @@ void SamplerIntegrator::Render(const Scene &scene) {
                    (sampleExtent.y + tileSize - 1) / tileSize);
     ProgressReporter reporter(nTiles.x * nTiles.y, "Rendering");
     {
-        if (distributionStrategy == none) {
+        if (strategy == DistributedStrategy::none) {
             ParallelFor2D([&](Point2i tile) {
                 std::unique_ptr<FilmTile> filmTile = RenderTile(scene, sampleBounds, tile);
                 // Merge image tile into _Film_
                 camera->film->MergeFilmTile(std::move(filmTile));
-                // reporter.Update(); TODO: add this back
                 reporter.Update();
             }, nTiles);
             reporter.Done();
-        } else if (distributionStrategy == master) {
-            zmq::context_t context; // 1 is number of io threads
-            zmq::socket_t socket(context, ZMQ_REP);
-            socket.connect ("tcp://localhost:34348");
-            zmq::message_t msg(100);
-            memset (msg.data(), 0, 100);
-            socket.send(msg);
+        } else if (strategy == DistributedStrategy::master) {
+            DistributedServer server(nTiles.x * nTiles.y, 
+                [&](const int job_id, void * data, size_t size) {
+                    Point2i tile = TileFromJobId(nTiles, job_id);
+                    Bounds2i tileBounds = TileBounds(sampleBounds, tile);
+                    std::unique_ptr<FilmTile> filmTile = camera->film->GetFilmTile(tileBounds);
+                    filmTile->Load(data, size);
+                    camera->film->MergeFilmTile(std::move(filmTile));
+                    reporter.Update();
+                });
+            server.Start();
             reporter.Done();
-        } else if (distributionStrategy == slave) {
+        } else if (strategy == DistributedStrategy::slave) {
+            DistributedClient client;
+            int job_id;
+            while (client.NextJob(job_id)) {
+                Point2i tile = TileFromJobId(nTiles, job_id);
+                std::unique_ptr<FilmTile> filmTile = RenderTile(scene, sampleBounds, tile);
+                client.CompleteJob(job_id, filmTile->GetData(), filmTile->GetSize());
+            }
             reporter.Done();
-            // msg = request
-            // if msg.type == shutdown
-            // if msg.type == wait
-            // if msg.type == render
-            // Point2i tile = recv
         }
     }
     LOG(INFO) << "Rendering finished";
@@ -271,10 +284,31 @@ void SamplerIntegrator::Render(const Scene &scene) {
 }
 
 
+Point2i SamplerIntegrator::TileFromJobId(const Point2i& nTiles, const int job_id) {
+    int y = job_id / nTiles.x;
+    int x = job_id - (y * nTiles.x);
+    return Point2i(x, y);
+}
+
+int SamplerIntegrator::JobIdFromTile(const Point2i& nTiles, const Point2i& tile) {
+    return tile.x + tile.y * nTiles.x;
+}
+
+
+Bounds2i SamplerIntegrator::TileBounds(const Bounds2i &sampleBounds, const Point2i &tile) {
+    // Compute sample bounds for tile
+    int x0 = sampleBounds.pMin.x + tile.x * tileSize;
+    int x1 = std::min(x0 + tileSize, sampleBounds.pMax.x);
+    int y0 = sampleBounds.pMin.y + tile.y * tileSize;
+    int y1 = std::min(y0 + tileSize, sampleBounds.pMax.y);
+    Bounds2i tileBounds(Point2i(x0, y0), Point2i(x1, y1));
+    LOG(INFO) << "Starting image tile " << tileBounds;
+    return tileBounds;
+}
+
 std::unique_ptr<FilmTile> SamplerIntegrator::RenderTile(const Scene &scene, const Bounds2i &sampleBounds,
                                    const Point2i &tile) {
     Vector2i sampleExtent = sampleBounds.Diagonal();
-    const int tileSize = 16;
     Point2i nTiles((sampleExtent.x + tileSize - 1) / tileSize,
                    (sampleExtent.y + tileSize - 1) / tileSize);
     MemoryArena arena;
@@ -283,13 +317,7 @@ std::unique_ptr<FilmTile> SamplerIntegrator::RenderTile(const Scene &scene, cons
     int seed = tile.y * nTiles.x + tile.x;
     std::unique_ptr<Sampler> tileSampler = sampler->Clone(seed);
 
-    // Compute sample bounds for tile
-    int x0 = sampleBounds.pMin.x + tile.x * tileSize;
-    int x1 = std::min(x0 + tileSize, sampleBounds.pMax.x);
-    int y0 = sampleBounds.pMin.y + tile.y * tileSize;
-    int y1 = std::min(y0 + tileSize, sampleBounds.pMax.y);
-    Bounds2i tileBounds(Point2i(x0, y0), Point2i(x1, y1));
-    LOG(INFO) << "Starting image tile " << tileBounds;
+    Bounds2i tileBounds = TileBounds(sampleBounds, tile);
 
     // Get _FilmTile_ for tile
     std::unique_ptr<FilmTile> filmTile =
