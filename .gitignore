@@ -3,3 +3,20 @@ src/build
 src/bin
 src/objs
 .sconsign.dblite
+build/
+
+# CMakeCache.txt
+# CMakeFiles/
+# CPackConfig.cmake
+# CPackSourceConfig.cmake
+# CTestTestfile.cmake
+# Makefile
+# bsdftest
+# cmake_install.cmake
+# cyhair2pbrt
+# imgtool
+# install_manifest.txt
+# libpbrt.a
+# obj2pbrt
+# pbrt
+# pbrt_test

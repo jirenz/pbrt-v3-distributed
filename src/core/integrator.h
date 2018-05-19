@@ -73,6 +73,8 @@ Spectrum EstimateDirect(const Interaction &it, const Point2f &uShading,
 std::unique_ptr<Distribution1D> ComputeLightPowerDistribution(
     const Scene &scene);
 
+enum DistributionStrategy { none, master, slave };
+
 // SamplerIntegrator Declarations
 class SamplerIntegrator : public Integrator {
   public:
@@ -80,9 +82,11 @@ class SamplerIntegrator : public Integrator {
     SamplerIntegrator(std::shared_ptr<const Camera> camera,
                       std::shared_ptr<Sampler> sampler,
                       const Bounds2i &pixelBounds)
-        : camera(camera), sampler(sampler), pixelBounds(pixelBounds) {}
+        : camera(camera), sampler(sampler), pixelBounds(pixelBounds),
+          distributionStrategy(none) {}
     virtual void Preprocess(const Scene &scene, Sampler &sampler) {}
     void Render(const Scene &scene);
+    std::unique_ptr<FilmTile> RenderTile(const Scene &scene, const Bounds2i &sampleBounds, const Point2i &tile);
     virtual Spectrum Li(const RayDifferential &ray, const Scene &scene,
                         Sampler &sampler, MemoryArena &arena,
                         int depth = 0) const = 0;
@@ -103,6 +107,7 @@ class SamplerIntegrator : public Integrator {
     // SamplerIntegrator Private Data
     std::shared_ptr<Sampler> sampler;
     const Bounds2i pixelBounds;
+    const DistributionStrategy distributionStrategy = none;
 };
 
 }  // namespace pbrt

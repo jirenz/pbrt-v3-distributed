@@ -347,6 +347,10 @@ SET_PROPERTY(TARGET Ptex_static PROPERTY FOLDER "dependencies")
 INCLUDE_DIRECTORIES ( src/ext/ptex/src/ptex )
 
 ###########################################################################
+# zmq
+FIND_LIBRARY(ZMQ_LIB libzmq)
+
+###########################################################################
 # On to pbrt...
 
 SET ( PBRT_CORE_SOURCE
@@ -486,6 +490,7 @@ SET(ALL_PBRT_LIBS
   glog
   Ptex_static
   ${ZLIB_LIBRARY}
+  ${ZMQ_LIB}
 )
 
 # Main renderer

@@ -1,0 +1,25 @@
+Film "image" "string filename" ["sphere.exr"]
+	"integer xresolution" [300] "integer yresolution" [300]
+
+Sampler "halton" "integer pixelsamples" [4] 
+
+Integrator "path" "integer maxdepth" [1]
+
+# Camera configuration: the camera is located on the Z axis, and is
+# pointed at the center of the scene
+LookAt 0 0 2.5  0 0 0   0 1 0
+Camera "perspective" "float fov" [60]
+
+WorldBegin
+
+LightSource "spot" "color I" [50 50 50] "point from" [1.0 5 4] "point to" [0 0 0] "float coneangle" [60]
+
+# The following sections define scene geometry and the material properties
+Material "uber" "color Kd" [1 1 1] "color Ks" [.05 .05 .05]
+AttributeBegin
+Shape "sphere" "float radius" [1.0]
+AttributeEnd
+
+WorldEnd
+
+
