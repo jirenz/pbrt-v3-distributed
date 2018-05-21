@@ -3,10 +3,11 @@ import subprocess
 import pickle
 import datetime
 import zmq
+from pathlib import Path
 from threading import Thread
 from collections import OrderedDict
 from enum import Enum
-from communication import ZmqAsyncServer, ZmqClient
+from communication import ZmqAsyncServer, ZmqClient, bytes2str
 import nanolog as nl
 
 
@@ -15,8 +16,16 @@ logger = nl.Logger.create_logger(
     stream='stdout',
     time_format='MD HMS',
     show_level=True,
+    # level='debug',
 )
 
+def get_stdout_file(*, job_name, context_folder, role):
+    context = Path(context_folder)
+    log_folder_name = job_name + '-logs'
+    log_folder = context / log_folder_name
+    log_folder.mkdir(parents=True, exist_ok=True)
+    log_file = role + '.log'
+    return str(log_folder / log_file)
 
 def cur_time():
     return datetime.datetime.utcnow().isoformat()
@@ -37,6 +46,11 @@ class WorkerInfo:
     def clear(self):
         self.current_task = None
         self.last_heartbeat = None
+
+    @property
+    def name(self):
+        return bytes2str(self.address)
+    
 
 class MessageType(Enum):
     worker_available = 0
@@ -121,7 +135,9 @@ class RenderTask:
             'name': self.name,
             'context_folder': self._render_context.context_folder,
             'pbrt_file': self._render_context.pbrt_file,
-            'port': self.port
+            'context_name': self._render_context.context_name,
+            'port': self.port,
+            'job_name': self.job_name,
         }
 
     def detail_dict(self):
@@ -149,7 +165,7 @@ class RenderTask:
         self.started_at = cur_time()
 
     def state_completed(self):
-        assert self.state == TaskState.completed
+        assert self.state == TaskState.running
         self._state = TaskState.completed
         self.completed_at = cur_time()
 
@@ -186,11 +202,16 @@ class RenderJob:
 
     def args(self):
         return ['pbrt', self._render_context.pbrt_file, '--dist-master',
-                '--dist-nworkers', str(len(self.tasks)), '--dist-port', str(self.port)]
+                '--dist-nworkers', str(len(self.tasks)), '--dist-port', str(self.port),
+                '--dist-context', str(self.context_name)]
 
     @property
     def context_folder(self):
         return self._render_context.context_folder
+
+    @property
+    def context_name(self):
+        return self._render_context.context_name
 
     def _task_name(self, index):
         return '-'.join([self.name, str(index)])
@@ -306,13 +327,16 @@ class JobRunner(Thread):
             self.proc.terminate()
 
     def run(self):
-        # TODO: !!IMPORTANT io redirect
-        self.proc = subprocess.Popen(self.job.args(),
-                                     stdin=None,
-                                     stdout=None,
-                                     stderr=None,
-                                     shell=False,
-                                     cwd=self.job.context_folder)
+        stdout_file = get_stdout_file(context_folder=self.job.context_folder,
+                                      job_name=self.job.name,
+                                      role='master')
+        with open(stdout_file, 'w') as stdout:
+            args = self.job.args()
+            logger.info('> {}'.format(' '.join(args)))
+            self.proc = subprocess.Popen(args,
+                                         stdout=stdout,
+                                         stderr=subprocess.STDOUT,
+                                         cwd=self.job.context_folder)
         self.proc.wait()
         returncode = self.proc.returncode
         logger.info('proc exits return code {}'.format(returncode))
@@ -623,9 +647,9 @@ class SchedulerMaster:
             job_name, job = self.queued_jobs.popitem(last=False)
             job.state_running()
             self._start_job(job, port)
-            print('job started on port {}'.format(port))
 
     def _start_job(self, job, port):
+        logger.info('Job {} started on port {}'.format(job.name, port))
         job.port = port
         runner = JobRunner(job, self.system_port)
         self.port_runner_map[port] = runner
@@ -642,6 +666,7 @@ class SchedulerMaster:
             self._start_task(worker, task)
 
     def _start_task(self, worker, task):
+        logger.info('Task {} started on worker {}'.format(task.name, worker.name))
         if task.state != TaskState.queued:
             raise ValueError('Attempting to starting a task in state {}' \
                              .format(task.state.name))
@@ -671,6 +696,7 @@ class SchedulerSlave:
             if self.current_task is None:
                 resp = self.client.request(Message(MessageType.worker_available, {}))
                 assert resp.type == MessageType.worker_newtask
+                logger.info('Starting task {}'.format(resp.data['name']))
                 self.start_task(resp.data)
             else:
                 if self.proc.poll() is not None:
@@ -679,16 +705,21 @@ class SchedulerSlave:
                     task = self.current_task
                     self.current_task = None
                     if returncode == 0:
-                        resp = self.client.request(Message(MessageType.worker_complete,
-                                                   {'task_name': task}))
+                        logger.info('Task {} exited successfully'.format(task))
+                        msg = Message(MessageType.worker_complete, {'task_name': task})
+                        resp = self.client.request(msg)
                     else:
-                        resp = self.client.request(Message(MessageType.worker_terminate,
-                                                  {'task_name': task,
-                                                  'returncode': returncode}))
+                        logger.info('Task {} exited with code ({})' \
+                                    .format(self.current_task, returncode))
+                        msg = Message(MessageType.worker_terminate,
+                                      {'task_name': task,
+                                       'returncode': returncode})
+                        resp = self.client.request(msg)
                     assert resp.type == MessageType.ack
                 else:
-                    resp = self.client.request(Message(MessageType.worker_heartbeat,
-                                             {'task_name': self.current_task}))
+                    msg = Message(MessageType.worker_heartbeat,
+                                  {'task_name': self.current_task})
+                    resp = self.client.request(msg)
                     if resp.type == MessageType.heartbeat_terminate:
                         self.proc.terminate()
                     else:
@@ -697,13 +728,17 @@ class SchedulerSlave:
 
     def start_task(self, di):
         self.current_task = di['name']
-        # TODO: io redirecting
-        self.proc = subprocess.Popen(self.task_args(di['pbrt_file'], di['port']),
-                                     stdout=None,
-                                     stderr=None,
-                                     cwd=di['context_folder'])
+        stdout_file = get_stdout_file(context_folder=di['context_folder'],
+                                      job_name=di['job_name'],
+                                      role=self.current_task)
+        with open(stdout_file, 'w') as stdout:
+            args = self.task_args(di['pbrt_file'], di['port'], di['context_name'])
+            logger.info('> {}'.format(' '.join(args)))
+            self.proc = subprocess.Popen(args,
+                                         stdout=stdout,
+                                         stderr=subprocess.STDOUT,
+                                         cwd=di['context_folder'])
 
-    def task_args(self, pbrt_file, port):
+    def task_args(self, pbrt_file, port, context_name):
         return ['pbrt', pbrt_file, '--dist-slave', '--dist-host', self.host,
-                '--dist-port', str(port)]
-
+                '--dist-port', str(port), '--dist-context', context_name]

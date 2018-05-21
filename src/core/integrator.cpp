@@ -260,6 +260,7 @@ void SamplerIntegrator::Render(const Scene &scene) {
                     Point2i tile = TileFromJobId(nTiles, job_id);
                     Bounds2i tileBounds = TileBounds(sampleBounds, tile);
                     std::unique_ptr<FilmTile> filmTile = camera->film->GetFilmTile(tileBounds);
+                    std::cout << data << std::endl;
                     filmTile->Load(data, size);
                     camera->film->MergeFilmTile(std::move(filmTile));
                     reporter.Update();

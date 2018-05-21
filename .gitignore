@@ -4,7 +4,9 @@ src/bin
 src/objs
 .sconsign.dblite
 build/
-
+*.exr
+*.stdout
+*.log
 # CMakeCache.txt
 # CMakeFiles/
 # CPackConfig.cmake

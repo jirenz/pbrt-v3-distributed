@@ -369,5 +369,4 @@ class ZmqAsyncServer:
         """
         """
         msg = self.serializer(msg)
-        print('sending', [address, b'', msg])
         self.socket.send_multipart([address, b'', msg])
