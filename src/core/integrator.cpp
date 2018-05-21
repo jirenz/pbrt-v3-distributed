@@ -249,7 +249,6 @@ void SamplerIntegrator::Render(const Scene &scene) {
         if (strategy == DistributedStrategy::none) {
             ParallelFor2D([&](Point2i tile) {
                 std::unique_ptr<FilmTile> filmTile = RenderTile(scene, sampleBounds, tile);
-                // Merge image tile into _Film_
                 camera->film->MergeFilmTile(std::move(filmTile));
                 reporter.Update();
             }, nTiles);
@@ -260,7 +259,6 @@ void SamplerIntegrator::Render(const Scene &scene) {
                     Point2i tile = TileFromJobId(nTiles, job_id);
                     Bounds2i tileBounds = TileBounds(sampleBounds, tile);
                     std::unique_ptr<FilmTile> filmTile = camera->film->GetFilmTile(tileBounds);
-                    std::cout << data << std::endl;
                     filmTile->Load(data, size);
                     camera->film->MergeFilmTile(std::move(filmTile));
                     reporter.Update();
@@ -280,6 +278,7 @@ void SamplerIntegrator::Render(const Scene &scene) {
     }
     LOG(INFO) << "Rendering finished";
 
+    if (strategy == DistributedStrategy::master || strategy == DistributedStrategy::none)
     // Save final image after rendering
     camera->film->WriteImage();
 }
