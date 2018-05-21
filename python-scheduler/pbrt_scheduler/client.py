@@ -1,6 +1,6 @@
 import pickle
-from communication import ZmqClient
-from core import Message, MessageType
+from pbrt_scheduler.communication import ZmqClient
+from pbrt_scheduler.core import Message, MessageType
 
 def send_and_prin(client, msg):
     resp = client.request(msg)

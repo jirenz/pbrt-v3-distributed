@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import Thread
 from collections import OrderedDict
 from enum import Enum
-from communication import ZmqAsyncServer, ZmqClient, bytes2str
+from pbrt_scheduler.communication import ZmqAsyncServer, ZmqClient, bytes2str
 import nanolog as nl
 
 
@@ -332,7 +332,7 @@ class JobRunner(Thread):
                                       role='master')
         with open(stdout_file, 'w') as stdout:
             args = self.job.args()
-            logger.info('> {}'.format(' '.join(args)))
+            logger.info('$> {}'.format(' '.join(args)))
             self.proc = subprocess.Popen(args,
                                          stdout=stdout,
                                          stderr=subprocess.STDOUT,
@@ -377,7 +377,7 @@ class SchedulerMaster:
     def setup(self):
         self.zmq_context = zmq.Context()
         self.poller = zmq.Poller()
-        
+
         self.system_server = ZmqAsyncServer(host='*',
                                             port=self.system_port,
                                             serializer=pickle.dumps,
@@ -731,12 +731,14 @@ class SchedulerSlave:
         stdout_file = get_stdout_file(context_folder=di['context_folder'],
                                       job_name=di['job_name'],
                                       role=self.current_task)
+        print('outfile', stdout_file)
         with open(stdout_file, 'w') as stdout:
             args = self.task_args(di['pbrt_file'], di['port'], di['context_name'])
-            logger.info('> {}'.format(' '.join(args)))
+            logger.info('$> {}'.format(' '.join(args)))
             self.proc = subprocess.Popen(args,
                                          stdout=stdout,
                                          stderr=subprocess.STDOUT,
+                                         shell=True,
                                          cwd=di['context_folder'])
 
     def task_args(self, pbrt_file, port, context_name):

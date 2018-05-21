@@ -1,0 +1,27 @@
+FROM ubuntu:16.04
+
+RUN apt-get update && \
+	apt-get install -yq build-essential gcc g++ cmake make bison flex curl git wget 
+
+RUN wget -nv https://download.opensuse.org/repositories/network:messaging:zeromq:release-stable/xUbuntu_16.04/Release.key -O Release.key
+
+RUN apt-key add - < Release.key
+
+RUN sh -c "echo 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/xUbuntu_16.04/ /' > /etc/apt/sources.list.d/network:messaging:zeromq:release-stable.list" 
+
+RUN apt-get update && apt-get install -y libzmq3-dev
+
+# python deps
+WORKDIR /conda
+RUN curl -LO http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+	&& bash Miniconda3-latest-Linux-x86_64.sh -p /conda/miniconda -b \
+	&& rm /conda/Miniconda3-latest-Linux-x86_64.sh
+ENV PATH=/conda/miniconda/bin:${PATH}
+
+ADD . /app
+WORKDIR /app/build
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
+RUN cmake -G 'Unix Makefiles' .. \ 
+	&& make -j4 install
+RUN pip install -e /app/python-scheduler/
+ENV PATH=/app/build:${PATH}

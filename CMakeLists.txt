@@ -348,8 +348,25 @@ INCLUDE_DIRECTORIES ( src/ext/ptex/src/ptex )
 
 ###########################################################################
 # zmq
-ADD_SUBDIRECTORY(src/ext/libzmq)
+# FIND_LIBRARY(ZMQ_LIB libzmq)
 INCLUDE_DIRECTORIES(src/ext/cppzmq)
+## load in pkg-config support
+find_package(PkgConfig)
+## use pkg-config to get hints for 0mq locations
+pkg_check_modules(PC_ZeroMQ QUIET zmq)
+
+## use the hint from above to find where 'zmq.hpp' is located
+find_path(ZeroMQ_INCLUDE_DIR
+        NAMES zmq.hpp
+        PATHS ${PC_ZeroMQ_INCLUDE_DIRS}
+        )
+
+## use the hint from about to find the location of libzmq
+find_library(ZeroMQ_LIBRARY
+        NAMES zmq
+        PATHS ${PC_ZeroMQ_LIBRARY_DIRS}
+        )
+INCLUDE_DIRECTORIES(${ZeroMQ_INCLUDE_DIR})
 
 ###########################################################################
 # On to pbrt...
@@ -493,7 +510,7 @@ SET(ALL_PBRT_LIBS
   glog
   Ptex_static
   ${ZLIB_LIBRARY}
-  ${ZEROMQ_LIBRARY}
+  ${ZeroMQ_LIBRARY}
 )
 
 # Main renderer
