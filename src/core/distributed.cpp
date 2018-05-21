@@ -143,7 +143,7 @@ void DistributedServer::RecvOne() {
     switch (msg_type) {
     case DistributedMessageType::ready:
         worker_job_context = s_recv(socket);
-        std::cout << "Worker ready, context: " << worker_job_context << std::endl;
+        LOG(INFO) << "Worker ready, context: " << worker_job_context;
         if (worker_job_context != jobContext) { // terminate as worker has a different pbrt file
             t_send_more(socket, DistributedMessageType::terminate);
             s_send(socket, "Context mismatch");
@@ -155,14 +155,14 @@ void DistributedServer::RecvOne() {
             job_id = jobs.front();
             inProgress.insert(job_id);
             jobs.pop();
-            std::cout << "Worker starting: " << job_id << std::endl;
+            LOG(INFO) << "Worker starting: " << job_id;
             t_send_more(socket, DistributedMessageType::job);
             i_send(socket, job_id);
         }
         break;
     case DistributedMessageType::result:
         job_id = i_recv(socket);
-        std::cout << "Worker complted " << job_id << std::endl;
+        LOG(INFO) << "Worker complted " << job_id;
         RecvNoEINTR(socket, &message);
         handler(job_id, message.data(), message.size());
         inProgress.erase(job_id);
@@ -189,12 +189,12 @@ bool DistributedClient::NextJob(int & job_id) {
     switch (msg_type) {
     case DistributedMessageType::job:
         job_id = i_recv(socket);
-        std::cout << "Worker got job: " << job_id << std::endl;
+        LOG(INFO) << "Worker got job: " << job_id;
         return true;
         break;
     case DistributedMessageType::terminate:
         msg = s_recv(socket);
-        std::cout << "Terminated: " << msg << std::endl; // TODO: use official logging
+        LOG(INFO) << "Terminated: " << msg; // TODO: use official logging
         return false;
         break;
     default:
