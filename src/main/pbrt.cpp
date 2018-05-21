@@ -68,6 +68,18 @@ Reformatting options:
   --toply              Print a reformatted version of the input file(s) to
                        standard output and convert all triangle meshes to
                        PLY files. Does not render an image.
+
+Distributed options:
+  --dist-master        This process is the master process of a distributed render
+                       Will set nthreads=1 as master does not do rendering
+  --dist-slave         This process is a slave process of a distributed render
+  --dist-host          Host address of the master process, default: 127.0.0.1
+  --dist-port          Port of the master process: 
+                       Master process listens on this port
+                       Slave processes connect to this port on dist-host
+  --dist-context       A string to allow master confirm whether it is reading the same 
+                       data as a given slave, default: "default_context"
+  --dist-nworkers      Number of workers that a master will expecte to manage
 )");
     exit(msg ? 1 : 0);
 }
