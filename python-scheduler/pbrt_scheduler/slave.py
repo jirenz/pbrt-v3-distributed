@@ -3,7 +3,7 @@ from pbrt_scheduler.core import SchedulerSlave
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('--name', default='slave', type=str,
+    parser.add_argument('name', type=str,
                         help='name for communication with master')
     parser.add_argument('--system-host', default='127.0.0.1', type=str,
                         help='host for communication with master')

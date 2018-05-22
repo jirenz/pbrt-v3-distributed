@@ -27,6 +27,8 @@ setup(
     },
     install_requires=[
         "pyzmq",
+        "nanolog",
+        "benedict",
     ],
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",

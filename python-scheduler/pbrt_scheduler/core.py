@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import Thread
 from collections import OrderedDict
 from enum import Enum
-from pbrt_scheduler.communication import ZmqAsyncServer, ZmqClient, bytes2str
+from pbrt_scheduler.communication import ZmqAsyncServer, ZmqClient, bytes2str, str2bytes
 import nanolog as nl
 
 
@@ -16,7 +16,7 @@ logger = nl.Logger.create_logger(
     stream='stdout',
     time_format='MD HMS',
     show_level=True,
-    # level='debug',
+    level='debug',
 )
 
 def get_stdout_file(*, job_name, context_folder, role):
@@ -38,7 +38,7 @@ class WorkerInfo:
 
     def detail_dict(self):
         return {
-            'name': self.address,
+            'name': self.name,
             'task': self.current_task,
             'last_heartbeat': self.last_heartbeat
         }
@@ -336,6 +336,7 @@ class JobRunner(Thread):
             self.proc = subprocess.Popen(args,
                                          stdout=stdout,
                                          stderr=subprocess.STDOUT,
+                                         # shell=True,
                                          cwd=self.job.context_folder)
         self.proc.wait()
         returncode = self.proc.returncode
@@ -369,6 +370,7 @@ class SchedulerMaster:
         self.zmq_context = None
         self.system_server = None
         self.api_server = None
+        self.poller = None
 
     def run(self):
         self.setup()
@@ -469,7 +471,7 @@ class SchedulerMaster:
             job = self.jobs[job_name]
             job.info = 'Terminated by User'
             self._terminate_job(job)
-            self.api_server.send(address, success_message)
+            self.api_server.send(address, success_message())
 
     def _terminate_job(self, job):
         """
@@ -488,6 +490,8 @@ class SchedulerMaster:
                 task.state_terminated()
             elif task.state == TaskState.running:
                 task.state_terminating()
+            elif task.state == TaskState.terminating:
+                pass
             else:
                 task.state_terminated()
         self._check_complete(job)
@@ -590,6 +594,7 @@ class SchedulerMaster:
         if task.state == TaskState.running:
             self.system_server.send(address, ack_message())
         if task.state == TaskState.terminating:
+            logger.debug('Terminating task {}'.format(task_name))
             self.system_server.send(address, heartbeat_terminate_message())
 
     def _handle_worker_complete(self, address, message):
@@ -721,7 +726,9 @@ class SchedulerSlave:
                                   {'task_name': self.current_task})
                     resp = self.client.request(msg)
                     if resp.type == MessageType.heartbeat_terminate:
-                        self.proc.terminate()
+                        logger.info('Task {} terminated by master' \
+                                    .format(self.current_task))
+                        self.proc.kill()
                     else:
                         assert resp.type == MessageType.ack
                     time.sleep(self.heartbeat_interval)
@@ -731,14 +738,13 @@ class SchedulerSlave:
         stdout_file = get_stdout_file(context_folder=di['context_folder'],
                                       job_name=di['job_name'],
                                       role=self.current_task)
-        print('outfile', stdout_file)
         with open(stdout_file, 'w') as stdout:
             args = self.task_args(di['pbrt_file'], di['port'], di['context_name'])
             logger.info('$> {}'.format(' '.join(args)))
             self.proc = subprocess.Popen(args,
                                          stdout=stdout,
                                          stderr=subprocess.STDOUT,
-                                         shell=True,
+                                         # shell=True,
                                          cwd=di['context_folder'])
 
     def task_args(self, pbrt_file, port, context_name):
