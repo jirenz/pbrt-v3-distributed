@@ -13,18 +13,19 @@ class KurrealParser(SymphonyParser):
     def setup(self):
         super().setup()
         self.docker_build_settings = {}
-        self._setup_deploy()
         SymphonyConfig().set_experiment_folder('~/pbrt')
+        self._setup_deploy()
+        self._setup_connect()
 
     def update_config(self, di):
         config_path = Path(expanduser('~/.pbrt-distributed.yml'))
         backup_path = Path(expanduser('~/.pbrt-distributed.yml.bak'))
         current_config = load_yaml_file(str(config_path))
-        with backup_path.open('r') as f_back:
+        with backup_path.open('w') as f_back:
             f_back.write(dump_yaml_str(current_config))
         for key in di:
             current_config[key] = di[key]
-        with config_path.open('r') as f:
+        with config_path.open('w') as f:
             f.write(dump_yaml_str(current_config))
         print('Updated client config file')
 
@@ -49,11 +50,14 @@ class KurrealParser(SymphonyParser):
         self._add_experiment_name(parser, required=False, positional=True)
 
     def action_connect(self, args):
-        name = self._get_experiment(args)
+        name = args.experiment_name
+        if name is None:
+            name = self.cluster.current_experiment()
         url = self.cluster.external_url(name, 'frontend')
         if url:
+            host, port = url.split(':')
             print('Setting forntend url: {}'.format(url))
-            self.update_config({'server_host': url})
+            self.update_config({'server_host': host, 'server_port': port})
         else:
             print('Frontend does not yet have an external IP.')
 
@@ -72,16 +76,17 @@ class KurrealParser(SymphonyParser):
             host_port_map.append('$SYMPH_SLOT_{0}_HOST:$SYMPH_SLOT_{0}_PORT'.format(i))
         host_port_map = ','.join(host_port_map)
 
-        master_args = ['--server-port', '$SYMPH_FRONTEND_PORT',
+        master_args = ['pbrt-master', '--server-port', '$SYMPH_FRONTEND_PORT',
                        '--system-port', '$SYMPH_SYSTEM_PORT',
                        '--slots', host_port_map]
 
         master = exp.new_process('master',
                                  container_image=args.image,
-                                 command=['pbrt-master'],
-                                 args=master_args)
+                                 command=['/bin/bash'],
+                                 args=['-c', ' '.join(master_args)])
         master.binds('system')
         master.exposes({'frontend': frontend_port})
+        master.set_env('PYTHONUNBUFFERED', '1')
 
         for i in range(10):
             master.binds('slot-{}'.format(i))
@@ -93,12 +98,14 @@ class KurrealParser(SymphonyParser):
         slaves = []
         for index in range(args.num_workers):
             name = 'slave-{}'.format(index)
+            this_args = ['-c', ' '.join(['pbrt-slave', name] + slave_args)]
             slave = exp.new_process(name,
                                     container_image=args.image,
-                                    command=['pbrt-slave'],
-                                    args=[name] + slave_args)
+                                    command=['/bin/bash'],
+                                    args=this_args)
             slave.image_pull_policy('Always')
             slave.connects('system')
+            slave.set_env('PYTHONUNBUFFERED', '1')
             slaves.append(slave)
 
         nfs_server = 'surreal-shared-fs-vm'
@@ -111,6 +118,8 @@ class KurrealParser(SymphonyParser):
         max_workers = args.num_workers
         fs_save_path = nfs_server_path + '/jirenz/pbrt'
         fs_read_path = nfs_mount_path + '/jirenz/pbrt'
+
+        cluster.launch(exp, force=True)
 
         config_di = {
             'max_workers': max_workers,

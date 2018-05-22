@@ -656,6 +656,7 @@ class SchedulerMaster:
         job_name = di['job_name']
         job = self.jobs[job_name]
         job.info = 'Completed (0)'
+        self._check_complete(job)
         self.system_server.send(address, ack_message())
 
     def _handle_job_terminate(self, address, message):

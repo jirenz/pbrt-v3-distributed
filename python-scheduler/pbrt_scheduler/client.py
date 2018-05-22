@@ -174,10 +174,13 @@ def render(args):
     args_mkdirp = ['ssh', config['fs_host'], 'mkdir', '-p', str(context_folder)]
     tar_command = ' '.join(['tar', 'xvzf', str(remote_compressed_file), '-C', str(context_folder)])
     args_unzip = ['ssh', config['fs_host'], tar_command]
+    args_chmod = ['ssh', config['fs_host'], 'chmod', '777', str(context_folder)] 
     logger.infofmt('$> {}', ' '.join(args_mkdirp))
     subprocess.run(args_mkdirp, check=True)
     logger.infofmt('$> {}', ' '.join(args_unzip))
     subprocess.run(args_unzip, check=True)
+    logger.infofmt('$> {}', ' '.join(args_chmod))
+    subprocess.run(args_chmod, check=True)
 
     remote_read_root = Path(config['fs_read_path'])
     context_read_folder = remote_read_root / job_name
