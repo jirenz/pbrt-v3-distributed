@@ -23,6 +23,8 @@ setup(
         'console_scripts': [
             'pbrt-master=pbrt_scheduler.master:main',
             'pbrt-slave=pbrt_scheduler.slave:main',
+            'pbrt-cluster=pbrt_scheduler.launch_cluster:main',
+            'pbrt-client=pbrt_scheduler.client:main'
         ]
     },
     install_requires=[

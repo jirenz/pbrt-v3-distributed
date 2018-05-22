@@ -4,10 +4,10 @@ import pickle
 import datetime
 import zmq
 from pathlib import Path
-from threading import Thread
+from threading import Thread, Lock
 from collections import OrderedDict
 from enum import Enum
-from pbrt_scheduler.communication import ZmqAsyncServer, ZmqClient, bytes2str, str2bytes
+from pbrt_scheduler.communication import ZmqAsyncServer, ZmqClient, bytes2str, str2bytes, ZmqSocket
 import nanolog as nl
 
 
@@ -128,7 +128,7 @@ class RenderTask:
         self.started_at = None
         self.completed_at = None
         self.terminated_at = None
-        self.port = None
+        self.slot = (None, None)
 
     def worker_dict(self):
         return {
@@ -136,6 +136,7 @@ class RenderTask:
             'context_folder': self._render_context.context_folder,
             'pbrt_file': self._render_context.pbrt_file,
             'context_name': self._render_context.context_name,
+            'host': self.host,
             'port': self.port,
             'job_name': self.job_name,
         }
@@ -149,6 +150,14 @@ class RenderTask:
             'completed_at': self.completed_at,
             'terminated_at': self.terminated_at,
         }
+
+    @property
+    def port(self):
+        return self.slot[1]
+
+    @property
+    def host(self):
+        return self.slot[0]
 
     @property
     def state(self):
@@ -195,7 +204,7 @@ class RenderJob:
         self.started_at = None
         self.terminated_at = None
         self.info = ''
-        self.port = None
+        self.slot = (None, None)
         for i in range(max_workers):
             task = RenderTask(self._task_name(i), self._render_context, self)
             self.tasks.append(task)
@@ -204,6 +213,14 @@ class RenderJob:
         return ['pbrt', self._render_context.pbrt_file, '--dist-master',
                 '--dist-nworkers', str(len(self.tasks)), '--dist-port', str(self.port),
                 '--dist-context', str(self.context_name)]
+
+    @property
+    def port(self):
+        return self.slot[1]
+
+    @property
+    def host(self):
+        return self.slot[0]
 
     @property
     def context_folder(self):
@@ -319,7 +336,7 @@ class JobRunner(Thread):
         self.proc = None
 
     def terminate_job(self):
-        while self.proc is None: 
+        while self.proc is None:
         # Very rare, in case there is a race condition in delete
             time.sleep(1)
         if not self.terminated:
@@ -355,14 +372,17 @@ class JobRunner(Thread):
 
 
 class SchedulerMaster:
-    def __init__(self, server_port, system_port, portrange):
+    def __init__(self, server_port, system_port, host_port_pairs):
+        """
+        host_port_pairs: (host,port) for master process
+        """
         self.server_port = int(server_port)
         self.system_port = int(system_port)
         self.workers = {}
         self.jobs = {}
         self.running_tasks = {}
-        self.available_ports = list(portrange)
-        self.port_runner_map = {}
+        self.available_job_slots = host_port_pairs
+        self.slot_runner_map = {}
         self.queued_jobs = OrderedDict()
         self.queued_tasks = OrderedDict()
         self.queued_workers = OrderedDict()
@@ -481,7 +501,7 @@ class SchedulerMaster:
         if job.state == JobState.queued:
             del self.queued_jobs[job_name]
         if job.state == JobState.running:
-            runner = self.port_runner_map[job.port]
+            runner = self.slot_runner_map[job.slot]
             runner.terminate_job()
         job.state_terminating()
         for task in job.tasks:
@@ -498,17 +518,17 @@ class SchedulerMaster:
 
     def _check_complete(self, job):
         if job.terminated_count + job.completed_count == len(job.tasks):
-            if job.port is not None:
-                self._release_port(job.port)
-                job.port = None
+            if job.slot is not None:
+                self._release_job_slot(job.slot)
+                job.slot = None
             del self.jobs[job.name]
 
-    def _release_port(self, port):
-        del self.port_runner_map[port]
-        self.available_ports.append(port)
+    def _release_job_slot(self, slot):
+        del self.slot_runner_map[slot]
+        self.available_job_slots.append(slot)
 
-    def _claim_port(self):
-        return self.available_ports.pop()
+    def _claim_job_slot(self):
+        return self.available_job_slots.pop()
 
     def _handle_query_jobs(self, address, message):
         resp = []
@@ -647,20 +667,20 @@ class SchedulerMaster:
         self.system_server.send(address, ack_message())
 
     def _start_jobs(self):
-        while len(self.available_ports) > 0 and len(self.queued_jobs) > 0:
-            port = self._claim_port()
+        while len(self.available_job_slots) > 0 and len(self.queued_jobs) > 0:
+            slot = self._claim_job_slot()
             job_name, job = self.queued_jobs.popitem(last=False)
             job.state_running()
-            self._start_job(job, port)
+            self._start_job(job, slot)
 
-    def _start_job(self, job, port):
-        logger.info('Job {} started on port {}'.format(job.name, port))
-        job.port = port
+    def _start_job(self, job, slot):
+        logger.info('Job {} started on host {} port {}'.format(job.name, slot[0], slot[1]))
+        job.slot = slot
         runner = JobRunner(job, self.system_port)
-        self.port_runner_map[port] = runner
+        self.slot_runner_map[slot] = runner
         runner.start()
         for task in job.tasks:
-            task.port = port
+            task.slot = slot
             task.state_queued()
             self.queued_tasks[task.name] = task
 
@@ -739,7 +759,7 @@ class SchedulerSlave:
                                       job_name=di['job_name'],
                                       role=self.current_task)
         with open(stdout_file, 'w') as stdout:
-            args = self.task_args(di['pbrt_file'], di['port'], di['context_name'])
+            args = self.task_args(di['pbrt_file'], di['host'], di['port'], di['context_name'])
             logger.info('$> {}'.format(' '.join(args)))
             self.proc = subprocess.Popen(args,
                                          stdout=stdout,
@@ -747,6 +767,6 @@ class SchedulerSlave:
                                          # shell=True,
                                          cwd=di['context_folder'])
 
-    def task_args(self, pbrt_file, port, context_name):
-        return ['pbrt', pbrt_file, '--dist-slave', '--dist-host', self.host,
+    def task_args(self, pbrt_file, host, port, context_name):
+        return ['pbrt', pbrt_file, '--dist-slave', '--dist-host', host,
                 '--dist-port', str(port), '--dist-context', context_name]
