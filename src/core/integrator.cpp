@@ -266,13 +266,16 @@ void SamplerIntegrator::Render(const Scene &scene) {
             server.Start();
             reporter.Done();
         } else if (strategy == DistributedStrategy::slave) {
-            DistributedClient client;
-            int job_id;
-            while (client.NextJob(job_id)) {
-                Point2i tile = TileFromJobId(nTiles, job_id);
-                std::unique_ptr<FilmTile> filmTile = RenderTile(scene, sampleBounds, tile);
-                client.CompleteJob(job_id, filmTile->GetData(), filmTile->GetSize());
-            }
+            zmq::context_t context(1);
+            ParallelFor([&](const int worker_id) {
+                DistributedClient client(context);
+                int job_id;
+                while (client.NextJob(job_id)) {
+                    Point2i tile = TileFromJobId(nTiles, job_id);
+                    std::unique_ptr<FilmTile> filmTile = RenderTile(scene, sampleBounds, tile);
+                    client.CompleteJob(job_id, filmTile->GetData(), filmTile->GetSize());
+                }
+            }, MaxThreadIndex(), 1);
             reporter.Done();
         }
     }

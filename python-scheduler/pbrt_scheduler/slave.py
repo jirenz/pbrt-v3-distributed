@@ -11,11 +11,15 @@ def main():
                         help='port for communication with master')
     parser.add_argument('--heartbeat-interval', default=5, type=int,
                         help='Interval for heartbeat')
+    parser.add_argument('-c', '--cores-per-worker', default=2, type=int,
+                        help='port for communication with slaves')
     args = parser.parse_args()
 
-    slave = SchedulerSlave(name=args.name, master_host=args.system_host,
+    slave = SchedulerSlave(name=args.name,
+                           master_host=args.system_host,
                            master_port=args.system_port,
-                           heartbeat_interval=args.heartbeat_interval)
+                           heartbeat_interval=args.heartbeat_interval,
+                           cores_per_worker=args.cores_per_worker)
     slave.run()
 
 if __name__ == "__main__":

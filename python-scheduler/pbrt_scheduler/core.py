@@ -196,7 +196,12 @@ class JobState(Enum):
     terminating = 4
 
 class RenderJob:
-    def __init__(self, context_name, context_folder, pbrt_file, max_workers):
+    def __init__(self,
+                 context_name,
+                 context_folder,
+                 pbrt_file,
+                 num_workers,
+                 cores_per_worker):
         self._render_context = RenderContext(context_name, context_folder, pbrt_file)
         self.tasks = []
         self._state = JobState.initialized
@@ -205,13 +210,15 @@ class RenderJob:
         self.terminated_at = None
         self.info = ''
         self.slot = (None, None)
-        for i in range(max_workers):
+        self.cores_per_worker = cores_per_worker
+        for i in range(num_workers):
             task = RenderTask(self._task_name(i), self._render_context, self)
             self.tasks.append(task)
 
     def args(self):
         return ['pbrt', self._render_context.pbrt_file, '--dist-master',
-                '--dist-nworkers', str(len(self.tasks)), '--dist-port', str(self.port),
+                '--dist-nworkers', str(len(self.tasks) * self.cores_per_worker),
+                '--dist-port', str(self.port),
                 '--dist-context', str(self.context_name)]
 
     @property
@@ -372,12 +379,13 @@ class JobRunner(Thread):
 
 
 class SchedulerMaster:
-    def __init__(self, server_port, system_port, host_port_pairs):
+    def __init__(self, server_port, system_port, host_port_pairs, cores_per_worker):
         """
         host_port_pairs: (host,port) for master process
         """
         self.server_port = int(server_port)
         self.system_port = int(system_port)
+        self.cores_per_worker = cores_per_worker
         self.workers = {}
         self.jobs = {}
         self.running_tasks = {}
@@ -462,13 +470,14 @@ class SchedulerMaster:
 
     def _handle_assign_job(self, address, message):
         di = message.data
-        expected_keys = ['context_name', 'context_folder', 'pbrt_file', 'max_workers']
+        expected_keys = ['context_name', 'context_folder', 'pbrt_file', 'num_workers']
         if not self._api_data_valid(address, di, expected_keys, 'Assign Job'):
             return
         job = RenderJob(context_name=str(di['context_name']),
                         context_folder=str(di['context_folder']),
                         pbrt_file=str(di['pbrt_file']),
-                        max_workers=int(di['max_workers']))
+                        num_workers=int(di['num_workers']),
+                        cores_per_worker=int(self.cores_per_worker))
         if job.name in self.jobs:
             error_reason = 'Duplicate job {}'.format(job.name)
             self.api_server.send(address, error_message(error_reason))
@@ -704,7 +713,12 @@ class SchedulerMaster:
 
 
 class SchedulerSlave:
-    def __init__(self, *, name, master_host, master_port, heartbeat_interval=5):
+    def __init__(self, *,
+                 name,
+                 master_host,
+                 master_port,
+                 cores_per_worker,
+                 heartbeat_interval=5):
         self.name = name
         self.host = master_host
         self.port = master_port
@@ -716,6 +730,7 @@ class SchedulerSlave:
         self.current_task = None
         self.proc = None
         self.heartbeat_interval = heartbeat_interval
+        self.cores_per_worker = cores_per_worker
 
     def run(self):
         while True:
@@ -770,4 +785,5 @@ class SchedulerSlave:
 
     def task_args(self, pbrt_file, host, port, context_name):
         return ['pbrt', pbrt_file, '--dist-slave', '--dist-host', host,
-                '--dist-port', str(port), '--dist-context', context_name]
+                '--dist-port', str(port), '--dist-context', context_name,
+                '--nthreads', str(self.cores_per_worker)]

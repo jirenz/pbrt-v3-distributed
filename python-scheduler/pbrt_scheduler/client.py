@@ -38,7 +38,7 @@ def load_configs():
                 'server_port': 13480,
             }))
             f.write('# The default number of workers for each render\n')
-            f.write('# max_workers: 2\n')
+            f.write('# num_workers: 2\n')
             f.write('# Host of the server that `client render` can scp to\n')
             f.write('# fs_host: file_system\n')
             f.write('# Path for saving the file\n')
@@ -89,12 +89,12 @@ def get_workers():
     handle_backend_query_msg(resp)
     nl.pp(resp.data)
 
-def create_job(context_name, context_folder, pbrt_file, max_workers):
+def create_job(context_name, context_folder, pbrt_file, num_workers):
     di = {
         'context_name': context_name,
         'context_folder': context_folder,
         'pbrt_file': pbrt_file,
-        'max_workers': max_workers
+        'num_workers': num_workers,
     }
     logger.info('Creating job {}'.format(context_name))
     nl.pp(di)
@@ -127,11 +127,11 @@ def delete(args):
     delete_job(args.job_name)
 
 def create(args):
-    create_job(args.job_name, args.job_folder, args.pbrt_file, args.max_workers)
+    create_job(args.job_name, args.job_folder, args.pbrt_file, args.num_workers)
 
 def render(args):
     config = CONFIG()
-    for key in ['max_workers', 'fs_host', 'fs_save_path', 'fs_read_path']:
+    for key in ['num_workers', 'fs_host', 'fs_save_path', 'fs_read_path']:
         if not key in config:
             raise ValueError('Missing key {} in config'.format(key))
 
@@ -146,11 +146,11 @@ def render(args):
         job_name = pbrt_file.stem
     logger.infofmt('Job name: {}', job_name)
 
-    if args.max_workers is None:
-        max_workers = config['max_workers']
+    if args.num_workers is None:
+        num_workers = config['num_workers']
     else:
-        max_workers = args.max_workers
-    logger.infofmt('Max workers: {}', max_workers)
+        num_workers = args.num_workers
+    logger.infofmt('Max workers: {}', num_workers)
 
     local_context_folder = pbrt_file.parents[0]
     logger.infofmt('Compressing local context folder: {}', str(local_context_folder))
@@ -186,7 +186,7 @@ def render(args):
     context_read_folder = remote_read_root / job_name
     remote_read_pbrt_file = context_read_folder / pbrt_file.name
 
-    create_job(job_name, str(context_read_folder), str(remote_read_pbrt_file), max_workers)
+    create_job(job_name, str(context_read_folder), str(remote_read_pbrt_file), num_workers)
 
 def _setup_job(subparsers):
     job_parser = subparsers.add_parser(
@@ -223,7 +223,7 @@ def _setup_create(subparsers):
     create_parser.add_argument('job_name', type=str)
     create_parser.add_argument('job_folder', type=str)
     create_parser.add_argument('pbrt_file', type=str)
-    create_parser.add_argument('max_workers', type=int)
+    create_parser.add_argument('num_workers', type=int)
     create_parser.set_defaults(func=create)
 
 def _setup_render(subparsers):
@@ -235,11 +235,9 @@ def _setup_render(subparsers):
     render_parser.add_argument('pbrt_file', type=str, help='pbrt_file to render')
     render_parser.add_argument('job_name', type=str, nargs='?', default=None,
                                help='name of rendering job')
-    render_parser.add_argument('--max-workers', default=None, type=int,
-                               help='number of workers to use' \
-                                'folder containing pbrt_file')
+    render_parser.add_argument('--num-workers', default=None, type=int,
+                               help='number of workers to use')
     render_parser.set_defaults(func=render)
-
 
 def main():
     parser = ArgumentParser()

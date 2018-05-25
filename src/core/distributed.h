@@ -84,16 +84,18 @@ private:
 
 class DistributedClient {
 public:
-    DistributedClient(const std::string& address, const std::string& job_context) : 
-    address(address), jobContext(job_context), context(1), socket(context, ZMQ_REQ) {}
-    DistributedClient() : DistributedClient(ClientAddress(), PbrtOptions.distContext) {}
+    DistributedClient(zmq::context_t& context,
+                      const std::string& address,
+                      const std::string& job_context) : 
+    address(address), jobContext(job_context), socket(context, ZMQ_REQ) {}
+    DistributedClient(zmq::context_t& context) : 
+    DistributedClient(context, ClientAddress(), PbrtOptions.distContext) {}
     bool NextJob(int& job_id);
     void CompleteJob(const int job_id, const void * data, size_t size);
 
 private:
     std::string address;
     std::string jobContext; // Identifier of implicitly shared states
-    zmq::context_t context; // 1 is number of io threads
     zmq::socket_t socket;
     bool connected = false;
 

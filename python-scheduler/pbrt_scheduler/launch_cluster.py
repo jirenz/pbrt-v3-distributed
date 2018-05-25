@@ -37,7 +37,7 @@ class KurrealParser(SymphonyParser):
             help='Number of worker threads to use'
         )
         parser.add_argument(
-            '--cores-per-worker', type=str, default='1',
+            '--cores-per-worker', type=int, default=2,
             help='Amount of cpu to use per worker'
         )
         parser.add_argument(
@@ -76,9 +76,11 @@ class KurrealParser(SymphonyParser):
             host_port_map.append('$SYMPH_SLOT_{0}_HOST:$SYMPH_SLOT_{0}_PORT'.format(i))
         host_port_map = ','.join(host_port_map)
 
-        master_args = ['pbrt-master', '--server-port', '$SYMPH_FRONTEND_PORT',
+        master_args = ['pbrt-master',
+                       '--server-port', '$SYMPH_FRONTEND_PORT',
                        '--system-port', '$SYMPH_SYSTEM_PORT',
-                       '--slots', host_port_map]
+                       '--slots', host_port_map,
+                       '--cores-per-worker', str(args.cores_per_worker)]
 
         master = exp.new_process('master',
                                  container_image=args.image,
@@ -87,6 +89,9 @@ class KurrealParser(SymphonyParser):
         master.binds('system')
         master.exposes({'frontend': frontend_port})
         master.set_env('PYTHONUNBUFFERED', '1')
+        master.node_selector('surreal-node', 'agent')
+        master.add_toleration(key='surreal', value='true', effect='NoExecute')
+        master.resource_request(cpu=1.5)
 
         for i in range(10):
             master.binds('slot-{}'.format(i))
@@ -94,7 +99,8 @@ class KurrealParser(SymphonyParser):
         master.image_pull_policy('Always')
         slave_args = ['--system-port', '$SYMPH_SYSTEM_PORT',
                       '--system-host', '$SYMPH_SYSTEM_HOST',
-                      '--heartbeat-interval', '30']
+                      '--heartbeat-interval', '30',
+                      '--cores-per-worker', str(args.cores_per_worker)]
         slaves = []
         for index in range(args.num_workers):
             name = 'slave-{}'.format(index)
@@ -107,6 +113,9 @@ class KurrealParser(SymphonyParser):
             slave.connects('system')
             slave.set_env('PYTHONUNBUFFERED', '1')
             slaves.append(slave)
+            slave.node_selector('surreal-node', 'agent')
+            slave.add_toleration(key='surreal', value='true', effect='NoExecute')
+            slave.resource_request(cpu=1.5)
 
         nfs_server = 'surreal-shared-fs-vm'
         nfs_server_path = '/data'
@@ -115,17 +124,18 @@ class KurrealParser(SymphonyParser):
             # Mount nfs
             proc.mount_nfs(server=nfs_server, path=nfs_server_path, mount_path=nfs_mount_path)
 
-        max_workers = args.num_workers
+        num_workers = args.num_workers
         fs_save_path = nfs_server_path + '/jirenz/pbrt'
         fs_read_path = nfs_mount_path + '/jirenz/pbrt'
 
         cluster.launch(exp, force=True)
 
         config_di = {
-            'max_workers': max_workers,
+            'num_workers': num_workers,
             'fs_save_path': fs_save_path,
             'fs_read_path': fs_read_path,
             'server_port': frontend_port,
+            'cores-per-worker': args.cores_per_worker,
         }
         self.update_config(config_di)
 
