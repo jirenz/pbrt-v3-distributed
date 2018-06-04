@@ -2,6 +2,9 @@
 src/build
 src/bin
 src/objs
+src/ext/glog
+src/ext/ptex
+src/ext/veclib
 .sconsign.dblite
 build/
 *.exr
