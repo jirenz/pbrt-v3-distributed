@@ -1,3 +1,5 @@
+import time
+import sys
 from pathlib import Path
 from os.path import expanduser
 from symphony.commandline import SymphonyParser
@@ -5,6 +7,8 @@ from symphony.engine import SymphonyConfig, Cluster
 from symphony.kube import KubeCluster
 from symphony.addons import DockerBuilder
 from benedict import dump_yaml_str, load_yaml_file
+from pbrt_scheduler.utils import *
+
 
 class KurrealParser(SymphonyParser):
     def create_cluster(self):
@@ -14,7 +18,7 @@ class KurrealParser(SymphonyParser):
         super().setup()
         self.docker_build_settings = {}
         SymphonyConfig().set_experiment_folder('~/pbrt')
-        self._setup_deploy()
+        self._setup_launch()
         self._setup_connect()
 
     def update_config(self, di):
@@ -29,8 +33,8 @@ class KurrealParser(SymphonyParser):
             f.write(dump_yaml_str(current_config))
         print('Updated client config file')
 
-    def _setup_deploy(self):
-        parser = self.add_subparser('deploy', aliases=[])
+    def _setup_launch(self):
+        parser = self.add_subparser('launch', aliases=[])
         self._add_experiment_name(parser, required=True, positional=True)
         parser.add_argument(
             'num_workers', type=int,
@@ -44,15 +48,18 @@ class KurrealParser(SymphonyParser):
             '--image', type=str, default='us.gcr.io/surreal-dev-188523/jirenz-pbrt:latest',
             help='Container image'
         )
+        parser.add_argument(
+            '--no-wait', action='store_true',
+            help='Do not wait for establishing connection'
+        )
 
     def _setup_connect(self):
         parser = self.add_subparser('connect', aliases=[])
+        parser.add_argument('--no-retry')
+        parser.add_argument('--retry-interval', type=int, default=30, help='Retry after <interval> seconds')
         self._add_experiment_name(parser, required=False, positional=True)
 
-    def action_connect(self, args):
-        name = args.experiment_name
-        if name is None:
-            name = self.cluster.current_experiment()
+    def _connect(self, name):
         url = self.cluster.external_url(name, 'frontend')
         if url:
             host, port = url.split(':')
@@ -61,7 +68,22 @@ class KurrealParser(SymphonyParser):
         else:
             print('Frontend does not yet have an external IP.')
 
-    def action_deploy(self, args):
+    def action_connect(self, args):
+        name = args.experiment_name
+        if name is None:
+            name = self.cluster.current_experiment()
+        if args.no_retry:
+            self._connect(name)
+        else:
+            while True:
+                try:
+                    self._connect(name)
+                    return
+                except Exception e:
+                    print(e)
+                    countdown('Retrying in {} s', args.retry_interval)
+
+    def action_launch(self, args):
         """
         Then create a surreal experiment
         Args:
@@ -139,8 +161,9 @@ class KurrealParser(SymphonyParser):
         }
         self.update_config(config_di)
 
+
 def main():
     KurrealParser().main()
 
 if __name__ == '__main__':
-    main()    
+    main()

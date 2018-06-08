@@ -2,13 +2,14 @@ import pickle
 import os
 import tarfile
 import subprocess
+import time
 from pathlib import Path
 from argparse import ArgumentParser
 import nanolog as nl
 from benedict.data_format import load_yaml_file, dump_yaml_str
 from pbrt_scheduler.communication import ZmqClient
 from pbrt_scheduler.core import MessageType, Message
-
+from pbrt_scheduler.utils import *
 
 logger = nl.Logger.create_logger(
     'client',
@@ -129,21 +130,37 @@ def delete(args):
 def create(args):
     create_job(args.job_name, args.job_folder, args.pbrt_file, args.num_workers)
 
-def render(args):
+def _find_pbrt_file(pbrt_file):
+    pbrt_file = Path(args.pbrt_file).expanduser().resolve()
+    if not pbrt_file.exists():
+        raise ValueError('Cannot find pbrt file {}'.format(pbrt_file))
+    logger.infofmt('Found pbrt file: {}', str(pbrt_file))
+    return pbrt_file
+
+def get_config_for_nfs():
+    """
+    Does error checking
+    """
     config = CONFIG()
     for key in ['num_workers', 'fs_host', 'fs_save_path', 'fs_read_path']:
         if not key in config:
             raise ValueError('Missing key {} in config'.format(key))
+    return config
 
-    pbrt_file = Path(os.path.expanduser(args.pbrt_file))
-    if not pbrt_file.exists():
-        raise ValueError('Cannot find pbrt file {}'.format(pbrt_file))
-    logger.infofmt('Found pbrt file: {}', str(pbrt_file))
+def run_command(args):
+    logger.infofmt('$> {}', ' '.join(args))
+    subprocess.run(args, check=True)
+
+def render(args):
+    config = get_config_for_nfs()
+
+    pbrt_file = _fine_pbrt_file(args.pbrt_file)
 
     if args.job_name is not None:
         job_name = args.job_name
+        args.folder_name if args.folder_name is not None else job_name
     else:
-        job_name = pbrt_file.stem
+        job_name, folder_name = pbrt_file.stem, pbrt_file.parent.stem
     logger.infofmt('Job name: {}', job_name)
 
     if args.num_workers is None:
@@ -152,40 +169,55 @@ def render(args):
         num_workers = args.num_workers
     logger.infofmt('Max workers: {}', num_workers)
 
-    local_context_folder = pbrt_file.parents[0]
-    # logger.infofmt('Compressing local context folder: {}', str(local_context_folder))
-    # tar_folder = Path('/tmp/pbrt')
-    # tar_folder.mkdir(parents=True, exist_ok=True)
-    # compressed_file = tar_folder / (job_name + '.tar.gz')
-    # with tarfile.open(name=str(compressed_file), mode='w:gz') as archive:
-    #     archive.add(str(local_context_folder), recursive=True, arcname='.')
+    local_context_folder = pbrt_file.parent
 
     remote_save_root = Path(config['fs_save_path'])
-    remote_compressed_file = remote_save_root / (job_name + '.tar.gz')
-    context_folder = remote_save_root / job_name
-
-    # logger.info('Sending context to remote')
-    # args_scp = ['scp', str(compressed_file),
-    #             '{}:{}'.format(config['fs_host'], str(remote_save_root))]
-    # logger.infofmt('$> {}', ' '.join(args_scp))
-    # subprocess.run(args_scp, check=True)
+    context_folder = remote_save_root / folder_name
 
     logger.info('Decompressing file on remote')
+    args_local_chmod = ['chmod', '666', str(local_context_folder / '*.exr')]
     args_mkdirp = ['ssh', config['fs_host'], 'mkdir', '-p', str(context_folder)]
-    args_rsync = ['rsync', '-rvz', '--progress', str(local_context_folder) + '/', config['fs_host'] + ':' + str(context_folder)]
+    args_rsync = ['rsync', '-rvztp', '--progress', str(local_context_folder) + '/', config['fs_host'] + ':' + str(context_folder)]
     args_chmod = ['ssh', config['fs_host'], 'chmod', '777', str(context_folder)] 
-    logger.infofmt('$> {}', ' '.join(args_mkdirp))
-    subprocess.run(args_mkdirp, check=True)
-    logger.infofmt('$> {}', ' '.join(args_rsync))
-    subprocess.run(args_rsync, check=True)
-    logger.infofmt('$> {}', ' '.join(args_chmod))
-    subprocess.run(args_chmod, check=True)
+    run_command(args_local_chmod)
+    run_command(args_mkdirp)
+    run_command(args_rsync)
+    run_command(args_chmod)
 
     remote_read_root = Path(config['fs_read_path'])
-    context_read_folder = remote_read_root / job_name
+    context_read_folder = remote_read_root / folder_name
     remote_read_pbrt_file = context_read_folder / pbrt_file.name
 
     create_job(job_name, str(context_read_folder), str(remote_read_pbrt_file), num_workers)
+
+def fetch(args):
+    while True:
+        config = get_config_for_nfs()
+        remote_context_folder = Path(config['fs_save_path']) / args.remote_context_folder
+        local_context_folder = args.local_context_folder if args.local_context_folder else '.'
+        local_context_folder = Path(local_context_folder).expanduser().resolve()
+        if args.all_files:
+            args_rsync = ['rsync', '-ruvztp', '--progress', 
+                          config['fs_host'] + ':' + str(remote_context_folder),
+                          str(local_context_folder)]
+            run_command(args_rsync)
+        else:
+            # get exrs
+            args_rsync1 = ['rsync', '-uztp', '--exclude="*"', '--include="*.exr"',
+                           config['fs_host'] + ':' + str(remote_context_folder) + '/*',
+                           str(local_context_folder) + '/']
+            run_command(args_rsync1)
+            # get logs
+            args_rsync2 = ['rsync', '-ruztp', '--include="*.txt"', '--exclude="*"',
+                           config['fs_host'] + ':' + str(remote_context_folder) + '/',
+                           str(local_context_folder) + '/']
+            run_command(args_rsync2)
+        if not args.repeat:
+            break
+        else:
+            countdown(args.repeat_interval, 'Resyncing in {}s')
+            print('=' * 20)
+
 
 def _setup_job(subparsers):
     job_parser = subparsers.add_parser(
@@ -234,9 +266,25 @@ def _setup_render(subparsers):
     render_parser.add_argument('pbrt_file', type=str, help='pbrt_file to render')
     render_parser.add_argument('job_name', type=str, nargs='?', default=None,
                                help='name of rendering job')
+    render_parser.add_argument('folder_name', type=str, nargs='?', default=None,
+                               help='name of containing folder rendering job')
     render_parser.add_argument('--num-workers', default=None, type=int,
                                help='number of workers to use')
     render_parser.set_defaults(func=render)
+
+def _setup_fetch(subparsers):
+    fetch_parser = subparsers.add_parser(
+        'fetch',
+        help='fetch data on remote',
+        aliases=['f']
+    )
+    fetch_parser.add_argument('remote_context_folder', type=str, help='remote folder name of job')
+    fetch_parser.add_argument('local_context_folder', type=str, nargs='?', default=None, help='local folder to sync to')
+    fetch_parser.add_argument('--all-files', action='store_true')
+    fetch_parser.add_argument('-r', '--repeat', action='store_true', help='keep fetching')
+    fetch_parser.add_argument('--repeat-interval', type=int, default=30, help='fetch every repeat_interval seconds')
+    fetch_parser.set_defaults(func=fetch)
+
 
 def main():
     parser = ArgumentParser()
@@ -251,6 +299,7 @@ def main():
     _setup_create(subparsers)
     _setup_delete(subparsers)
     _setup_render(subparsers)
+    _setup_fetch(subparsers)
 
     args = parser.parse_args()
     args.func(args)
