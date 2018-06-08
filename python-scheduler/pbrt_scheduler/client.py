@@ -153,32 +153,31 @@ def render(args):
     logger.infofmt('Max workers: {}', num_workers)
 
     local_context_folder = pbrt_file.parents[0]
-    logger.infofmt('Compressing local context folder: {}', str(local_context_folder))
-    tar_folder = Path('/tmp/pbrt')
-    tar_folder.mkdir(parents=True, exist_ok=True)
-    compressed_file = tar_folder / (job_name + '.tar.gz')
-    with tarfile.open(name=str(compressed_file), mode='w:gz') as archive:
-        archive.add(str(local_context_folder), recursive=True, arcname='.')
+    # logger.infofmt('Compressing local context folder: {}', str(local_context_folder))
+    # tar_folder = Path('/tmp/pbrt')
+    # tar_folder.mkdir(parents=True, exist_ok=True)
+    # compressed_file = tar_folder / (job_name + '.tar.gz')
+    # with tarfile.open(name=str(compressed_file), mode='w:gz') as archive:
+    #     archive.add(str(local_context_folder), recursive=True, arcname='.')
 
     remote_save_root = Path(config['fs_save_path'])
     remote_compressed_file = remote_save_root / (job_name + '.tar.gz')
     context_folder = remote_save_root / job_name
 
-    logger.info('Sending context to remote')
-    args_scp = ['scp', str(compressed_file),
-                '{}:{}'.format(config['fs_host'], str(remote_save_root))]
-    logger.infofmt('$> {}', ' '.join(args_scp))
-    subprocess.run(args_scp, check=True)
+    # logger.info('Sending context to remote')
+    # args_scp = ['scp', str(compressed_file),
+    #             '{}:{}'.format(config['fs_host'], str(remote_save_root))]
+    # logger.infofmt('$> {}', ' '.join(args_scp))
+    # subprocess.run(args_scp, check=True)
 
     logger.info('Decompressing file on remote')
     args_mkdirp = ['ssh', config['fs_host'], 'mkdir', '-p', str(context_folder)]
-    tar_command = ' '.join(['tar', 'xvzf', str(remote_compressed_file), '-C', str(context_folder)])
-    args_unzip = ['ssh', config['fs_host'], tar_command]
+    args_rsync = ['rsync', '-rvz', '--progress', str(local_context_folder) + '/', config['fs_host'] + ':' + str(context_folder)]
     args_chmod = ['ssh', config['fs_host'], 'chmod', '777', str(context_folder)] 
     logger.infofmt('$> {}', ' '.join(args_mkdirp))
     subprocess.run(args_mkdirp, check=True)
-    logger.infofmt('$> {}', ' '.join(args_unzip))
-    subprocess.run(args_unzip, check=True)
+    logger.infofmt('$> {}', ' '.join(args_rsync))
+    subprocess.run(args_rsync, check=True)
     logger.infofmt('$> {}', ' '.join(args_chmod))
     subprocess.run(args_chmod, check=True)
 

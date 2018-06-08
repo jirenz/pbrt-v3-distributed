@@ -37,7 +37,7 @@ class KurrealParser(SymphonyParser):
             help='Number of worker threads to use'
         )
         parser.add_argument(
-            '--cores-per-worker', type=int, default=2,
+            '--cores-per-worker', type=int, default=8,
             help='Amount of cpu to use per worker'
         )
         parser.add_argument(
@@ -113,9 +113,9 @@ class KurrealParser(SymphonyParser):
             slave.connects('system')
             slave.set_env('PYTHONUNBUFFERED', '1')
             slaves.append(slave)
-            slave.node_selector('surreal-node', 'agent')
+            slave.node_selector('surreal-node', 'nonagent-cpu')
             slave.add_toleration(key='surreal', value='true', effect='NoExecute')
-            slave.resource_request(cpu=1.5)
+            slave.resource_request(cpu=7)
 
         nfs_server = 'surreal-shared-fs-vm'
         nfs_server_path = '/data'
