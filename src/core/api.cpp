@@ -33,6 +33,7 @@
 // core/api.cpp*
 #include "api.h"
 #include "parallel.h"
+#include "distributed.h"
 #include "paramset.h"
 #include "spectrum.h"
 #include "scene.h"
@@ -1706,6 +1707,16 @@ Integrator *RenderOptions::MakeIntegrator() const {
             "Scene has scattering media but \"%s\" integrator doesn't support "
             "volume scattering. Consider using \"volpath\", \"bdpt\", or "
             "\"mlt\".", IntegratorName.c_str());
+    }
+
+    if (PbrtOptions.distributedStrategy != DistributedStrategy::none) {
+        if (IntegratorName == "bdpt" || IntegratorName == "mlt" || IntegratorName == "sppm") {
+            Error(
+                "The render is meant to be distributed but integrator \"%s\" is not a "
+                "subclass of SamplerIntegrator", IntegratorName.c_str()
+            );
+            return nullptr;
+        }
     }
 
     IntegratorParams.ReportUnused();
