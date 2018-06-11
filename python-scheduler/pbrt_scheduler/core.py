@@ -24,7 +24,7 @@ def get_stdout_file(*, job_name, context_folder, role):
     log_folder_name = job_name + '-logs'
     log_folder = context / log_folder_name
     log_folder.mkdir(parents=True, exist_ok=True)
-    log_folder.chmod('0o777')
+    log_folder.chmod(0o777)
     log_file = role + '.log'
     return str(log_folder / log_file)
 
@@ -212,6 +212,7 @@ class RenderJob:
         self.info = ''
         self.slot = (None, None)
         self.cores_per_worker = cores_per_worker
+        self.has_master_process = False
         for i in range(num_workers):
             task = RenderTask(self._task_name(i), self._render_context, self)
             self.tasks.append(task)
@@ -528,10 +529,11 @@ class SchedulerMaster:
 
     def _check_complete(self, job):
         if job.terminated_count + job.completed_count == len(job.tasks):
-            if job.slot is not None:
-                self._release_job_slot(job.slot)
-                job.slot = None
-            del self.jobs[job.name]
+            if not job.has_master_process:
+                if job.slot is not None:
+                    self._release_job_slot(job.slot)
+                    job.slot = None
+                del self.jobs[job.name]
 
     def _release_job_slot(self, slot):
         del self.slot_runner_map[slot]
@@ -665,6 +667,7 @@ class SchedulerMaster:
         di = message.data
         job_name = di['job_name']
         job = self.jobs[job_name]
+        job.has_master_process = False
         job.info = 'Completed (0)'
         self._check_complete(job)
         self.system_server.send(address, ack_message())
@@ -674,6 +677,7 @@ class SchedulerMaster:
         di = message.data
         job_name = di['job_name']
         job = self.jobs[job_name]
+        job.has_master_process = False
         job.info = 'Terminated ({})'.format(di['returncode'])
         self._terminate_job(job)
         self.system_server.send(address, ack_message())
@@ -683,6 +687,7 @@ class SchedulerMaster:
             slot = self._claim_job_slot()
             job_name, job = self.queued_jobs.popitem(last=False)
             job.state_running()
+            job.has_master_process = True
             self._start_job(job, slot)
 
     def _start_job(self, job, slot):

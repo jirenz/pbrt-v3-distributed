@@ -48,8 +48,6 @@ def load_configs():
             f.write('# Path for reading the file\n')
             f.write('# fs_read_path\n')
     config = load_yaml_file(str(config_path))
-    if 'local_temp_tar' not in config:
-        config['local_temp_tar'] = '/tmp/pbrt-distributed.tar.gz'
     if 'server_host' not in config:
         config['server_host'] = '127.0.0.1'
     if 'server_port' not in config:
