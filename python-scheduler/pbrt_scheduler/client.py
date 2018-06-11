@@ -3,6 +3,7 @@ import os
 import tarfile
 import subprocess
 import time
+import shlex
 from pathlib import Path
 from argparse import ArgumentParser
 import nanolog as nl
@@ -131,7 +132,7 @@ def create(args):
     create_job(args.job_name, args.job_folder, args.pbrt_file, args.num_workers)
 
 def _find_pbrt_file(pbrt_file):
-    pbrt_file = Path(args.pbrt_file).expanduser().resolve()
+    pbrt_file = Path(pbrt_file).expanduser().resolve()
     if not pbrt_file.exists():
         raise ValueError('Cannot find pbrt file {}'.format(pbrt_file))
     logger.infofmt('Found pbrt file: {}', str(pbrt_file))
@@ -154,7 +155,7 @@ def run_command(args):
 def render(args):
     config = get_config_for_nfs()
 
-    pbrt_file = _fine_pbrt_file(args.pbrt_file)
+    pbrt_file = _find_pbrt_file(args.pbrt_file)
 
     if args.job_name is not None:
         job_name = args.job_name
@@ -175,8 +176,10 @@ def render(args):
     context_folder = remote_save_root / folder_name
 
     logger.info('Decompressing file on remote')
-    args_local_chmod = ['chmod', '666', str(local_context_folder / '*.exr')]
+    chmod_subcommand = ' '.join(['chmod', '666', str(local_context_folder / '*.exr')])
+    args_local_chmod = ['/bin/bash', '-c', chmod_subcommand]
     args_mkdirp = ['ssh', config['fs_host'], 'mkdir', '-p', str(context_folder)]
+    # TODO: fix exclude
     args_rsync = ['rsync', '-rvztp', '--progress', str(local_context_folder) + '/', config['fs_host'] + ':' + str(context_folder)]
     args_chmod = ['ssh', config['fs_host'], 'chmod', '777', str(context_folder)] 
     run_command(args_local_chmod)
@@ -191,11 +194,14 @@ def render(args):
     create_job(job_name, str(context_read_folder), str(remote_read_pbrt_file), num_workers)
 
 def fetch(args):
+    config = get_config_for_nfs()
+    if args.remote_context_folder is None:
+        args.remote_context_folder = Path('.').resolve().stem
+    remote_context_folder = Path(config['fs_save_path']) / args.remote_context_folder
+    local_context_folder = args.local_context_folder if args.local_context_folder else '.'
+    local_context_folder = Path(local_context_folder).expanduser().resolve()
     while True:
-        config = get_config_for_nfs()
-        remote_context_folder = Path(config['fs_save_path']) / args.remote_context_folder
-        local_context_folder = args.local_context_folder if args.local_context_folder else '.'
-        local_context_folder = Path(local_context_folder).expanduser().resolve()
+
         if args.all_files:
             args_rsync = ['rsync', '-ruvztp', '--progress', 
                           config['fs_host'] + ':' + str(remote_context_folder),
@@ -203,19 +209,19 @@ def fetch(args):
             run_command(args_rsync)
         else:
             # get exrs
-            args_rsync1 = ['rsync', '-uztp', '--exclude="*"', '--include="*.exr"',
+            args_rsync1 = ['rsync', '-uztp', '--exclude="*"', "--include='*.exr'",
                            config['fs_host'] + ':' + str(remote_context_folder) + '/*',
                            str(local_context_folder) + '/']
             run_command(args_rsync1)
             # get logs
-            args_rsync2 = ['rsync', '-ruztp', '--include="*.txt"', '--exclude="*"',
+            args_rsync2 = ['rsync', '-ruztp', "--include='*.txt'", "--exclude='*'",
                            config['fs_host'] + ':' + str(remote_context_folder) + '/',
                            str(local_context_folder) + '/']
             run_command(args_rsync2)
-        if not args.repeat:
+        if args.no_repeat:
             break
         else:
-            countdown(args.repeat_interval, 'Resyncing in {}s')
+            countdown(args.repeat_interval, 'Resyncing in {:3}s')
             print('=' * 20)
 
 
@@ -278,11 +284,11 @@ def _setup_fetch(subparsers):
         help='fetch data on remote',
         aliases=['f']
     )
-    fetch_parser.add_argument('remote_context_folder', type=str, help='remote folder name of job')
+    fetch_parser.add_argument('remote_context_folder', type=str, nargs='?', default=None, help='remote folder name of job')
     fetch_parser.add_argument('local_context_folder', type=str, nargs='?', default=None, help='local folder to sync to')
     fetch_parser.add_argument('--all-files', action='store_true')
-    fetch_parser.add_argument('-r', '--repeat', action='store_true', help='keep fetching')
-    fetch_parser.add_argument('--repeat-interval', type=int, default=30, help='fetch every repeat_interval seconds')
+    fetch_parser.add_argument('-n', '--no-repeat', action='store_true', help='keep fetching')
+    fetch_parser.add_argument('--repeat-interval', type=int, default=15, help='fetch every repeat_interval seconds')
     fetch_parser.set_defaults(func=fetch)
 
 

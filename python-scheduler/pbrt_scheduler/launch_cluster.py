@@ -52,11 +52,16 @@ class KurrealParser(SymphonyParser):
             '--no-wait', action='store_true',
             help='Do not wait for establishing connection'
         )
+        self._add_connet_args(parser)
+
+    def _add_connet_args(self, parser):
+        parser.add_argument('--no-retry')
+        parser.add_argument('--retry-interval', type=int, default=10, help='Retry after <interval> seconds')
+
 
     def _setup_connect(self):
         parser = self.add_subparser('connect', aliases=[])
-        parser.add_argument('--no-retry')
-        parser.add_argument('--retry-interval', type=int, default=30, help='Retry after <interval> seconds')
+        self._add_connet_args(parser)
         self._add_experiment_name(parser, required=False, positional=True)
 
     def _connect(self, name):
@@ -79,9 +84,9 @@ class KurrealParser(SymphonyParser):
                 try:
                     self._connect(name)
                     return
-                except Exception e:
+                except Exception as e:
                     print(e)
-                    countdown('Retrying in {} s', args.retry_interval)
+                    countdown(args.retry_interval, 'Retrying in {} s')
 
     def action_launch(self, args):
         """
@@ -91,7 +96,7 @@ class KurrealParser(SymphonyParser):
         cluster = self.cluster
         exp = cluster.new_experiment(args.experiment_name)
 
-        n_slots = 10
+        n_slots = 1
         frontend_port = 13480
         host_port_map = []
         for i in range(n_slots):
@@ -160,6 +165,10 @@ class KurrealParser(SymphonyParser):
             'cores-per-worker': args.cores_per_worker,
         }
         self.update_config(config_di)
+
+        print('Connecting...')
+
+        self.action_connect(args)
 
 
 def main():

@@ -24,6 +24,7 @@ def get_stdout_file(*, job_name, context_folder, role):
     log_folder_name = job_name + '-logs'
     log_folder = context / log_folder_name
     log_folder.mkdir(parents=True, exist_ok=True)
+    log_folder.chmod('0o777')
     log_file = role + '.log'
     return str(log_folder / log_file)
 
@@ -669,6 +670,7 @@ class SchedulerMaster:
         self.system_server.send(address, ack_message())
 
     def _handle_job_terminate(self, address, message):
+        # TODO: need to change to job only terminates when every component has exited
         di = message.data
         job_name = di['job_name']
         job = self.jobs[job_name]
