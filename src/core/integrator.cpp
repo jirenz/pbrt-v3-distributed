@@ -264,6 +264,7 @@ void SamplerIntegrator::Render(const Scene &scene) {
                     reporter.Update();
                 });
             server.Start();
+            server.Join();
             reporter.Done();
         } else if (strategy == DistributedStrategy::slave) {
             zmq::context_t context(1);

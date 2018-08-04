@@ -69,6 +69,7 @@ public:
     DistributedServer(ServerAddress(), PbrtOptions.distContext, num_jobs, 
                       PbrtOptions.nWorkers, handler) {}
     void Start();
+    void Join();
     void RecvOne();
 
 private:

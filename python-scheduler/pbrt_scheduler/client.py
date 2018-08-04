@@ -157,7 +157,7 @@ def render(args):
 
     if args.job_name is not None:
         job_name = args.job_name
-        args.folder_name if args.folder_name is not None else job_name
+        folder_name = args.folder_name if args.folder_name is not None else job_name
     else:
         job_name, folder_name = pbrt_file.stem, pbrt_file.parent.stem
     logger.infofmt('Job name: {}', job_name)
@@ -178,7 +178,7 @@ def render(args):
     args_local_chmod = ['/bin/bash', '-c', chmod_subcommand]
     args_mkdirp = ['ssh', config['fs_host'], 'mkdir', '-p', str(context_folder)]
     # TODO: fix exclude
-    args_rsync = ['rsync', '-rvztp', '--progress', str(local_context_folder) + '/', config['fs_host'] + ':' + str(context_folder)]
+    args_rsync = ['rsync', '-rvztO', '--progress', str(local_context_folder) + '/', config['fs_host'] + ':' + str(context_folder)]
     args_chmod = ['ssh', config['fs_host'], 'chmod', '777', str(context_folder)] 
     run_command(args_local_chmod)
     run_command(args_mkdirp)
@@ -201,13 +201,13 @@ def fetch(args):
     while True:
 
         if args.all_files:
-            args_rsync = ['rsync', '-ruvztp', '--progress', 
+            args_rsync = ['rsync', '-ruvzt', '--progress', 
                           config['fs_host'] + ':' + str(remote_context_folder),
                           str(local_context_folder)]
             run_command(args_rsync)
         else:
             # get exrs
-            args_rsync1 = ['rsync', '-uztp', '--exclude="*"', "--include='*.exr'",
+            args_rsync1 = ['rsync', '-uzt', '--exclude="*"', "--include='*.exr'",
                            config['fs_host'] + ':' + str(remote_context_folder) + '/*',
                            str(local_context_folder) + '/']
             run_command(args_rsync1)

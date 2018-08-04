@@ -117,6 +117,9 @@ bool i_send_more (zmq::socket_t & socket, const int number) {
 
 void DistributedServer::Start() {
     socket.bind(address);
+}
+
+void DistributedServer::Join() {
     while ((!jobs.empty()) || (!inProgress.empty()) || (nWorkers > 0)) RecvOne();
 }
 

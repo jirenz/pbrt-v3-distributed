@@ -375,7 +375,7 @@ class JobRunner(Thread):
             msg = client.request(Message(MessageType.job_complete, {'job_name': self.job.name}))
         else:
             msg = client.request(Message(MessageType.job_terminate,
-                                {'returncode': returncode, 
+                                {'returncode': returncode,
                                  'job_name': self.job.name}))
         assert msg.type == MessageType.ack
 
