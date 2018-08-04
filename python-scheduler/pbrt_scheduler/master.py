@@ -13,13 +13,13 @@ def main():
                         help='Port range for communicating with running pbrt masters')
     parser.add_argument('--job-port-high', default=14100, type=int,
                         help='Port range for communicating with running pbrt masters')
-    parser.add_argument('--slots', default=None, type=str,
+    parser.add_argument('--addresses', default=None, type=str,
                         help='host:port,host:port,.. for pbrt-master processes'\
                              'Overrides job-port')
 
     args = parser.parse_args()
 
-    host_port_pairs = args.slots
+    host_port_pairs = args.addresses
 
     if host_port_pairs is None:
         host_port_pairs = []

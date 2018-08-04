@@ -129,7 +129,7 @@ class RenderTask:
         self.started_at = None
         self.completed_at = None
         self.terminated_at = None
-        self.slot = (None, None)
+        self.job_address = SchedulerConnectionAddress()
 
     def worker_dict(self):
         return {
@@ -154,11 +154,11 @@ class RenderTask:
 
     @property
     def port(self):
-        return self.slot[1]
+        return self.job_address.port
 
     @property
     def host(self):
-        return self.slot[0]
+        return self.job_address.host
 
     @property
     def state(self):
@@ -210,7 +210,7 @@ class RenderJob:
         self.started_at = None
         self.terminated_at = None
         self.info = ''
-        self.slot = (None, None)
+        self.job_address = SchedulerConnectionAddress()
         self.cores_per_worker = cores_per_worker
         self.has_master_process = False
         for i in range(num_workers):
@@ -225,11 +225,11 @@ class RenderJob:
 
     @property
     def port(self):
-        return self.slot[1]
+        return self.job_address.port
 
     @property
     def host(self):
-        return self.slot[0]
+        return self.job_address.host
 
     @property
     def context_folder(self):
@@ -379,6 +379,15 @@ class JobRunner(Thread):
                                  'job_name': self.job.name}))
         assert msg.type == MessageType.ack
 
+class SchedulerConnectionAddress:
+    def __init__(self, host=None, port=None):
+        if host is not None:
+            assert port is not None
+        self.host = host
+        self.port = port
+
+    def __bool__(self):
+        return self.host is not None
 
 class SchedulerMaster:
     def __init__(self, server_port, system_port, host_port_pairs, cores_per_worker):
@@ -391,8 +400,8 @@ class SchedulerMaster:
         self.workers = {}
         self.jobs = {}
         self.running_tasks = {}
-        self.available_job_slots = host_port_pairs
-        self.slot_runner_map = {}
+        self.available_job_addresses = [SchedulerConnectionAddress(*x) for x in host_port_pairs]
+        self.address_runner_map = {}
         self.queued_jobs = OrderedDict()
         self.queued_tasks = OrderedDict()
         self.queued_workers = OrderedDict()
@@ -512,7 +521,7 @@ class SchedulerMaster:
         if job.state == JobState.queued:
             del self.queued_jobs[job_name]
         if job.state == JobState.running:
-            runner = self.slot_runner_map[job.slot]
+            runner = self.address_runner_map[job.job_address]
             runner.terminate_job()
         job.state_terminating()
         for task in job.tasks:
@@ -530,17 +539,17 @@ class SchedulerMaster:
     def _check_complete(self, job):
         if job.terminated_count + job.completed_count == len(job.tasks):
             if not job.has_master_process:
-                if job.slot is not None:
-                    self._release_job_slot(job.slot)
-                    job.slot = None
+                if job.job_address:
+                    self._release_job_address(job.job_address)
+                    job.job_address = None
                 del self.jobs[job.name]
 
-    def _release_job_slot(self, slot):
-        del self.slot_runner_map[slot]
-        self.available_job_slots.append(slot)
+    def _release_job_address(self, address):
+        del self.address_runner_map[address]
+        self.available_job_addresses.append(address)
 
-    def _claim_job_slot(self):
-        return self.available_job_slots.pop()
+    def _claim_job_address(self):
+        return self.available_job_addresses.pop()
 
     def _handle_query_jobs(self, address, message):
         resp = []
@@ -683,21 +692,21 @@ class SchedulerMaster:
         self.system_server.send(address, ack_message())
 
     def _start_jobs(self):
-        while len(self.available_job_slots) > 0 and len(self.queued_jobs) > 0:
-            slot = self._claim_job_slot()
+        while len(self.available_job_addresses) > 0 and len(self.queued_jobs) > 0:
+            address = self._claim_job_address()
             job_name, job = self.queued_jobs.popitem(last=False)
             job.state_running()
             job.has_master_process = True
-            self._start_job(job, slot)
+            self._start_job(job, address)
 
-    def _start_job(self, job, slot):
-        logger.info('Job {} started on host {} port {}'.format(job.name, slot[0], slot[1]))
-        job.slot = slot
+    def _start_job(self, job, address):
+        logger.info('Job {} started on host {} port {}'.format(job.name, address.host, address.port))
+        job.job_address = address
         runner = JobRunner(job, self.system_port)
-        self.slot_runner_map[slot] = runner
+        self.address_runner_map[address] = runner
         runner.start()
         for task in job.tasks:
-            task.slot = slot
+            task.job_address = address
             task.state_queued()
             self.queued_tasks[task.name] = task
 

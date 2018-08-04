@@ -52,6 +52,9 @@ class KurrealParser(SymphonyParser):
             '--no-wait', action='store_true',
             help='Do not wait for establishing connection'
         )
+        parser.add_argument(
+            '--concurrent-jobs', type=int,
+            default=1, help='Number of concurrent render jobs')
         self._add_connet_args(parser)
 
     def _add_connet_args(self, parser):
@@ -96,17 +99,18 @@ class KurrealParser(SymphonyParser):
         cluster = self.cluster
         exp = cluster.new_experiment(args.experiment_name)
 
-        n_slots = 1
+        n_masters = args.concurrent_jobs
         frontend_port = 13480
-        host_port_map = []
-        for i in range(n_slots):
-            host_port_map.append('$SYMPH_SLOT_{0}_HOST:$SYMPH_SLOT_{0}_PORT'.format(i))
-        host_port_map = ','.join(host_port_map)
+        host_port_map_list = []
+        for i in range(n_masters):
+            # Each parallel pbrt-master requires its own host and port
+            host_port_map_list.append('$SYMPH_JOBSLOT_{0}_HOST:$SYMPH_JOBSLOT_{0}_PORT'.format(i))
+        host_port_map = ','.join(host_port_map_list)
 
         master_args = ['pbrt-master',
                        '--server-port', '$SYMPH_FRONTEND_PORT',
                        '--system-port', '$SYMPH_SYSTEM_PORT',
-                       '--slots', host_port_map,
+                       '--addresses', host_port_map,
                        '--cores-per-worker', str(args.cores_per_worker)]
 
         master = exp.new_process('master',
@@ -121,7 +125,7 @@ class KurrealParser(SymphonyParser):
         master.resource_request(cpu=1.5)
 
         for i in range(10):
-            master.binds('slot-{}'.format(i))
+            master.binds('jobslot-{}'.format(i))
 
         master.image_pull_policy('Always')
         slave_args = ['--system-port', '$SYMPH_SYSTEM_PORT',
