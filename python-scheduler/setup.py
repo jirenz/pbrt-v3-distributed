@@ -10,14 +10,13 @@ def read(fname):
 setup(
     name='pbrt-scheduler',
     version='0.0.1',
-    author='JZ',
-    # url='http://github.com/StanfordVL/Surreal',
+    author='Jiren Zhu',
     description='Scheduler for multi-node pbrt',
     long_description=read('README.md'),
     keywords=['Ray tracing',
               'Computer graphics',
               'Distributed Computing'],
-    # license='MIT',
+    license='MIT',
     packages=['pbrt_scheduler'],
     entry_points={
         'console_scripts': [

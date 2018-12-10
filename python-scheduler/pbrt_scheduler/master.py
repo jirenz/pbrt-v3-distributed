@@ -8,7 +8,7 @@ def main():
     parser.add_argument('-sy', '--system-port', default=13481, type=int,
                         help='port for communication with slaves')
     parser.add_argument('-c', '--cores-per-worker', default=2, type=int,
-                        help='port for communication with slaves')
+                        help='number of cpus to use for each worker')
     parser.add_argument('--job-port-low', default=14000, type=int,
                         help='Port range for communicating with running pbrt masters')
     parser.add_argument('--job-port-high', default=14100, type=int,
