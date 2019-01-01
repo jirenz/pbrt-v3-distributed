@@ -228,6 +228,18 @@ std::unique_ptr<Distribution1D> ComputeLightPowerDistribution(
         new Distribution1D(&lightPower[0], lightPower.size()));
 }
 
+
+void SynchronizeServer(DistributedServer& server) {
+    ProfilePhase p(Prof::IntegratorSynchronize);
+    server.Start();
+    server.Synchronize();
+}
+
+void JoinServer(DistributedServer& server) {
+    ProfilePhase p(Prof::IntegratorActualRender);
+    server.Join();
+}
+
 // SamplerIntegrator Method Definitions
 void SamplerIntegrator::Render(const Scene &scene) {
     Preprocess(scene, *sampler); // TODO: preprocess needs to be fixed
@@ -254,9 +266,7 @@ void SamplerIntegrator::Render(const Scene &scene) {
             }, nTiles);
             reporter.Done();
         } else if (strategy == DistributedStrategy::master) {
-            ProfilePhase* p1;
-            ProfilePhase* p2;
-            p1 = new ProfilePhase(Prof::IntegratorSynchronize);
+            LOG(WARNING) << "---Server Starts---" << std::endl;
             DistributedServer server(nTiles.x * nTiles.y, 
                 [&](const int job_id, void * data, size_t size) {
                     Point2i tile = TileFromJobId(nTiles, job_id);
@@ -266,13 +276,11 @@ void SamplerIntegrator::Render(const Scene &scene) {
                     camera->film->MergeFilmTile(std::move(filmTile));
                     reporter.Update();
                 });
-            server.Start();
-            server.Synchronize();
-            delete p1;
-            p2 = new ProfilePhase(Prof::IntegratorActualRender);
-            server.Join();
+            SynchronizeServer(server);
+            LOG(WARNING) << "---Actual Renderting Starts---" << std::endl;
+            JoinServer(server);
+            LOG(WARNING) << "---Actual Renderting Ends---" << std::endl;
             reporter.Done();
-            delete p2;
         } else if (strategy == DistributedStrategy::slave) {
             zmq::context_t context(1);
             ParallelFor([&](const int worker_id) {
@@ -292,7 +300,9 @@ void SamplerIntegrator::Render(const Scene &scene) {
     if (strategy == DistributedStrategy::master || strategy == DistributedStrategy::none)
     // Save final image after rendering
     camera->film->WriteImage();
+    LOG(WARNING) << "---Image Saved---" << std::endl;
 }
+
 
 
 Point2i SamplerIntegrator::TileFromJobId(const Point2i& nTiles, const int job_id) {

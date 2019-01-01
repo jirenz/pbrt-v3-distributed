@@ -129,7 +129,10 @@ void DistributedServer::Join() {
  *
  */
 void DistributedServer::Synchronize() {
-    while (workers_ready.size() < nWorkers) RecvOne();
+    while (workers_ready.size() < nWorkers) {
+        RecvOne();
+    }
+    synchronized = true;
 }
 
 /*
@@ -163,11 +166,11 @@ void DistributedServer::RecvOne() {
             s_send(socket, "Context mismatch");
             return;
         }
-        if (nReady < nWorkers) {
+        if (!synchronized) {
             // Synchronize all workers
             nReady += 1;
             workers_ready.push(identity);
-        } else if (nReady == nWorkers) {
+        } else {
             HandleWorkerReady(identity);
         }
         break;

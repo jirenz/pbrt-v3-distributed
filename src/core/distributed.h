@@ -85,6 +85,7 @@ private:
     JobHandler handler;
     int nWorkers; // This is only relevant for turning off workers
     int nReady = 0;
+    bool synchronized = false;
     std::queue<std::string> workers_ready;
 };
 
