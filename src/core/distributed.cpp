@@ -88,7 +88,7 @@ bool t_send (zmq::socket_t& socket, const DistributedMessageType type) {
     return rc;
 }
 
-bool t_send_more (zmq::socket_t& socket, const DistributedMessageType type) {
+bool t_sendmore (zmq::socket_t& socket, const DistributedMessageType type) {
     zmq::message_t message(sizeof(DistributedMessageType));
     memcpy (message.data(), &type, sizeof(DistributedMessageType));
     bool rc = SendNoEINTR(socket, message, ZMQ_SNDMORE);
@@ -120,7 +120,16 @@ void DistributedServer::Start() {
 }
 
 void DistributedServer::Join() {
+    StartAllWorkers();
     while ((!jobs.empty()) || (!inProgress.empty()) || (nWorkers > 0)) RecvOne();
+}
+
+/* 
+ *
+ *
+ */
+void DistributedServer::Synchronize() {
+    while (workers_ready.size() < nWorkers) RecvOne();
 }
 
 /*
@@ -136,8 +145,8 @@ void DistributedServer::Join() {
  * Server replies by ((t)ack)
  */
 void DistributedServer::RecvOne() {
-    // std::string identity = s_recv(socket); //  Worker Identity
-    // s_recv(socket); //  Envelope delimiter
+    std::string identity = s_recv(socket); //  Worker Identity
+    s_recv(socket); //  Envelope delimiter
     DistributedMessageType msg_type = t_recv(socket); // Message type
     // Variables for the switch statement
     std::string worker_job_context;
@@ -148,31 +157,59 @@ void DistributedServer::RecvOne() {
         worker_job_context = s_recv(socket);
         LOG(INFO) << "Worker ready, context: " << worker_job_context;
         if (worker_job_context != jobContext) { // terminate as worker has a different pbrt file
-            t_send_more(socket, DistributedMessageType::terminate);
+            s_sendmore(socket, identity);
+            s_sendmore(socket, "");
+            t_sendmore(socket, DistributedMessageType::terminate);
             s_send(socket, "Context mismatch");
-        } else if (jobs.size() == 0) { // terminate as there are no more jobs
-            t_send_more(socket, DistributedMessageType::terminate);
-            s_send(socket, "Completed");
-            nWorkers --;
-        } else {
-            job_id = jobs.front();
-            inProgress.insert(job_id);
-            jobs.pop();
-            LOG(INFO) << "Worker starting: " << job_id;
-            t_send_more(socket, DistributedMessageType::job);
-            i_send(socket, job_id);
+            return;
+        }
+        if (nReady < nWorkers) {
+            // Synchronize all workers
+            nReady += 1;
+            workers_ready.push(identity);
+        } else if (nReady == nWorkers) {
+            HandleWorkerReady(identity);
         }
         break;
     case DistributedMessageType::result:
         job_id = i_recv(socket);
-        LOG(INFO) << "Worker complted " << job_id;
+        LOG(INFO) << "Worker completed " << job_id;
         RecvNoEINTR(socket, &message);
         handler(job_id, message.data(), message.size());
         inProgress.erase(job_id);
+        s_sendmore(socket, identity);
+        s_sendmore(socket, "");
         t_send(socket, DistributedMessageType::ack);
         break;
     default:
         throw msg_type; // TODO: better error messages
+    }
+}
+
+void DistributedServer::StartAllWorkers() {
+    while (!workers_ready.empty()) {
+        std::string identity = workers_ready.front();
+        workers_ready.pop();
+        HandleWorkerReady(identity);
+    }
+}
+
+void DistributedServer::HandleWorkerReady(std::string identity) {
+    if (jobs.size() == 0) { // terminate as there are no more jobs
+        s_sendmore(socket, identity);
+        s_sendmore(socket, "");
+        t_sendmore(socket, DistributedMessageType::terminate);
+        s_send(socket, "Completed");
+        nWorkers --;
+    } else {
+        int job_id = jobs.front();
+        inProgress.insert(job_id);
+        jobs.pop();
+        LOG(INFO) << "Worker starting: " << job_id;
+        s_sendmore(socket, identity);
+        s_sendmore(socket, "");
+        t_sendmore(socket, DistributedMessageType::job);
+        i_send(socket, job_id);
     }
 }
 
@@ -184,9 +221,8 @@ bool DistributedClient::NextJob(int & job_id) {
         socket.connect(address);
         connected = true;
     }
-    t_send_more(socket, DistributedMessageType::ready);
+    t_sendmore(socket, DistributedMessageType::ready);
     s_send(socket, jobContext);
-
     DistributedMessageType msg_type = t_recv(socket);
     std::string msg;
     switch (msg_type) {
@@ -206,7 +242,7 @@ bool DistributedClient::NextJob(int & job_id) {
 }
 
 void DistributedClient::CompleteJob(const int job_id, const void * data, size_t size) {
-    bool rc = t_send_more(socket, DistributedMessageType::result);
+    bool rc = t_sendmore(socket, DistributedMessageType::result);
     rc = rc && i_send_more(socket, job_id);
     
     zmq::message_t message(size);

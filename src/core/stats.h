@@ -142,6 +142,8 @@ enum class Prof {
     MIPMapCreation,
 
     IntegratorRender,
+    IntegratorSynchronize,
+    IntegratorActualRender,
     SamplerIntegratorLi,
     SPPMCameraPass,
     SPPMGridConstruction,
@@ -197,6 +199,8 @@ static const char *ProfNames[] = {
     "MIP map generation",
 
     "Integrator::Render()",
+    "Integrator::Synchronize()",
+    "Integrator::ActualRender()",
     "SamplerIntegrator::Li()",
     "SPPM camera pass",
     "SPPM grid construction",

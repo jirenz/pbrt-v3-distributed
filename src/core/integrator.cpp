@@ -254,6 +254,9 @@ void SamplerIntegrator::Render(const Scene &scene) {
             }, nTiles);
             reporter.Done();
         } else if (strategy == DistributedStrategy::master) {
+            ProfilePhase* p1;
+            ProfilePhase* p2;
+            p1 = new ProfilePhase(Prof::IntegratorSynchronize);
             DistributedServer server(nTiles.x * nTiles.y, 
                 [&](const int job_id, void * data, size_t size) {
                     Point2i tile = TileFromJobId(nTiles, job_id);
@@ -264,8 +267,12 @@ void SamplerIntegrator::Render(const Scene &scene) {
                     reporter.Update();
                 });
             server.Start();
+            server.Synchronize();
+            delete p1;
+            p2 = new ProfilePhase(Prof::IntegratorActualRender);
             server.Join();
             reporter.Done();
+            delete p2;
         } else if (strategy == DistributedStrategy::slave) {
             zmq::context_t context(1);
             ParallelFor([&](const int worker_id) {

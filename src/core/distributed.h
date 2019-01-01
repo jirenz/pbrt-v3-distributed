@@ -45,7 +45,7 @@ DistributedMessageType t_recv (zmq::socket_t &socket);
 
 bool t_send (zmq::socket_t &socket, const DistributedMessageType type);
 
-bool t_send_more (zmq::socket_t &socket, const DistributedMessageType type);
+bool t_sendmore (zmq::socket_t &socket, const DistributedMessageType type);
 
 int i_recv (zmq::socket_t &socket);
 
@@ -61,7 +61,7 @@ class DistributedServer {
 public:
     DistributedServer(const std::string& address, const std::string& job_context,
                       const int num_jobs, const int num_workers, JobHandler handler) : 
-    address(address), jobContext(job_context), context(1), socket(context, ZMQ_REP),
+    address(address), jobContext(job_context), context(1), socket(context, ZMQ_ROUTER),
     nWorkers(num_workers), handler(handler) {
         for (int i = 0; i < num_jobs; i++) jobs.push(i);
     }
@@ -71,6 +71,9 @@ public:
     void Start();
     void Join();
     void RecvOne();
+    void Synchronize();
+    void HandleWorkerReady(std::string identity);
+    void StartAllWorkers();
 
 private:
     std::string address;
@@ -81,6 +84,8 @@ private:
     std::set<int> inProgress;
     JobHandler handler;
     int nWorkers; // This is only relevant for turning off workers
+    int nReady = 0;
+    std::queue<std::string> workers_ready;
 };
 
 class DistributedClient {
