@@ -71,6 +71,8 @@ class ParamSet {
     void AddString(const std::string &, std::unique_ptr<std::string[]> v,
                    int nValues);
     void AddTexture(const std::string &, const std::string &);
+    void AddSpectrum(const std::string &, std::unique_ptr<Spectrum[]> v,
+                     int nValues);
     void AddRGBSpectrum(const std::string &, std::unique_ptr<Float[]> v,
                         int nValues);
     void AddXYZSpectrum(const std::string &, std::unique_ptr<Float[]> v,
@@ -123,6 +125,7 @@ class ParamSet {
   private:
     friend class TextureParams;
     friend bool shapeMaySetMaterialParameters(const ParamSet &ps);
+    friend protobuf::ParamSet to_protobuf(const ParamSet& paramset);
 
     // ParamSet Private Data
     std::vector<std::shared_ptr<ParamSetItem<bool>>> bools;
@@ -212,9 +215,30 @@ class TextureParams {
         return geomParams.FindOneSpectrum(n,
                                           materialParams.FindOneSpectrum(n, d));
     }
+    std::vector<std::string> GetUsedFloatTextures() const;
+    std::vector<std::string> GetUsedSpectrumTextures() const;
     void ReportUnused() const;
+
     const ParamSet &GetGeomParams() const { return geomParams; }
     const ParamSet &GetMaterialParams() const { return materialParams; }
+    const std::map<std::string, std::shared_ptr<Texture<Float>>>
+        &GetFloatTextures() const {
+        return floatTextures;
+    }
+    const std::map<std::string, std::shared_ptr<Texture<Spectrum>>>
+        &GetSpectrumTextures() const {
+        return spectrumTextures;
+    }
+
+    std::map<std::string, std::shared_ptr<Texture<Float>>>
+        &GetFloatTextures() {
+        return floatTextures;
+    }
+
+    std::map<std::string, std::shared_ptr<Texture<Spectrum>>>
+        &GetSpectrumTextures() {
+        return spectrumTextures;
+    }
 
   private:
     // TextureParams Private Data

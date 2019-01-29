@@ -9,6 +9,18 @@ SET (CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
 PROJECT ( PBRT-V3 )
 
+OPTION(PBRT_FLOAT_AS_DOUBLE "Use 64-bit floats" OFF)
+
+IF (PBRT_FLOAT_AS_DOUBLE)
+  ADD_DEFINITIONS ( -D PBRT_FLOAT_AS_DOUBLE )
+ENDIF()
+
+OPTION(PBRT_SAMPLED_SPECTRUM "Use SampledSpectrum rather than RGBSpectrum" OFF)
+
+IF (PBRT_SAMPLED_SPECTRUM)
+  ADD_DEFINITIONS ( -D PBRT_SAMPLED_SPECTRUM )
+ENDIF()
+
 ENABLE_TESTING()
 
 if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -26,21 +38,21 @@ endif()
 
 if(NOT IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/ext/glog/cmake")
   message(FATAL_ERROR "The glog submodule directory is missing! "
-    "You probably did not clone the project with --recursive, or first checked out "
+    "You probably did not clone the project with --recursive, or you first checked out "
     "pbrt before it was added. It is possible to recover by running "
     "\"git submodule update --init --recursive\"")
 endif()
 
 if(NOT IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/ext/ptex/src")
   message(FATAL_ERROR "The ptex submodule directory is missing! "
-    "You probably did not clone the project with --recursive, or first checked out "
+    "You probably did not clone the project with --recursive, or you first checked out "
     "pbrt before it was added. It is possible to recover by running "
     "\"git submodule update --init --recursive\"")
 endif()
 
 if(NOT IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/ext/zlib/doc")
   message(FATAL_ERROR "The zlib submodule directory is missing! "
-    "You probably did not clone the project with --recursive, or first checked out "
+    "You probably did not clone the project with --recursive, or you first checked out "
     "pbrt before it was added. It is possible to recover by running "
     "\"git submodule update --init --recursive\"")
 endif()
@@ -52,17 +64,22 @@ IF(CMAKE_BUILD_TYPE MATCHES RELEASE)
   ADD_DEFINITIONS (-DNDEBUG)
 ENDIF()
 
+SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON)
+
 ###########################################################################
 # Annoying compiler-specific details
 
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 IF(CMAKE_COMPILER_IS_GNUCXX)
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-conversion-null")
 ELSEIF(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-register")
 ELSEIF(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
   FIND_PROGRAM(XIAR xiar)
   IF(XIAR)
@@ -185,7 +202,7 @@ int main() {
    fstat(fd, &s);
    size_t len = s.st_size;
    void *ptr = mmap(0, len, PROT_READ, MAP_FILE | MAP_SHARED, fd, 0);
-   munmap(ptr, len);   
+   munmap(ptr, len);
 }
 " HAVE_MMAP )
 if ( HAVE_MMAP )
@@ -285,7 +302,7 @@ IF(NOT ZLIB_FOUND)
 
   SET(ZLIB_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/ext/zlib")
   SET(ZLIB_LIBRARY zlibstatic)
-  SET_PROPERTY(TARGET zlibstatic PROPERTY FOLDER "dependencies")
+  SET_PROPERTY(TARGET zlibstatic PROPERTY FOLDER "ext")
   INCLUDE_DIRECTORIES(${ZLIB_INCLUDE_DIR} "${CMAKE_CURRENT_BINARY_DIR}/src/ext/zlib")
 ENDIF()
 INCLUDE_DIRECTORIES(${ZLIB_INCLUDE_DIRS})
@@ -300,7 +317,7 @@ SET(ILMBASE_BUILD_SHARED_LIBS    OFF CACHE BOOL " " FORCE)
 
 ADD_SUBDIRECTORY(src/ext/openexr)
 
-SET_PROPERTY(TARGET IexMath eLut toFloat b44ExpLogTable dwaLookups CopyIlmBaseLibs IlmThread Half Iex Imath IlmImf PROPERTY FOLDER "dependencies")
+SET_PROPERTY(TARGET IexMath eLut toFloat b44ExpLogTable dwaLookups IlmThread Half Iex Imath IlmImf PROPERTY FOLDER "ext")
 
 INCLUDE_DIRECTORIES (
   src/ext/openexr/IlmBase/Imath
@@ -321,8 +338,11 @@ ENDIF()
 
 SET(WITH_GFLAGS OFF CACHE BOOL "Use gflags")
 SET(BUILD_SHARED_LIBS OFF CACHE BOOL " " FORCE)
+IF(WIN32)
+  ADD_DEFINITIONS( -D GOOGLE_GLOG_DLL_DECL= )
+ENDIF()
 ADD_SUBDIRECTORY(src/ext/glog)
-SET_PROPERTY(TARGET glog PROPERTY FOLDER "dependencies")
+SET_PROPERTY(TARGET glog logging_unittest demangle_unittest utilities_unittest stl_logging_unittest PROPERTY FOLDER "ext")
 INCLUDE_DIRECTORIES (
   src/ext/glog/src
   ${CMAKE_BINARY_DIR}/src/ext/glog
@@ -343,7 +363,7 @@ IF ( WIN32 )
   ADD_DEFINITIONS ( /D PTEX_STATIC)
 ENDIF ()
 ADD_SUBDIRECTORY(src/ext/ptex)
-SET_PROPERTY(TARGET Ptex_static PROPERTY FOLDER "dependencies")
+SET_PROPERTY(TARGET Ptex_static ptxinfo halftest ftest rtest wtest PROPERTY FOLDER "ext")
 INCLUDE_DIRECTORIES ( src/ext/ptex/src/ptex )
 
 ###########################################################################
@@ -367,6 +387,12 @@ find_library(ZeroMQ_LIBRARY
         PATHS ${PC_ZeroMQ_LIBRARY_DIRS}
         )
 INCLUDE_DIRECTORIES(${ZeroMQ_INCLUDE_DIR})
+
+###########################################################################
+# Protobuf
+
+ADD_SUBDIRECTORY(src/messages)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/src/messages)
 
 ###########################################################################
 # On to pbrt...
@@ -457,22 +483,42 @@ SET ( PBRT_CORE_HEADERS
   )
 
 FILE ( GLOB PBRT_SOURCE
-  src/ext/*.c
-  src/ext/*.cpp
-  src/accelerators/*.cpp
-  src/cameras/*.cpp
-  src/filters/*.cpp
-  src/integrators/*.cpp
-  src/lights/*.cpp
-  src/materials/*.cpp
-  src/samplers/*.cpp
-  src/shapes/*.cpp
-  src/textures/*.cpp
-  src/media/*.cpp
-  )
+  src/ext/*
+  src/accelerators/*
+  src/cameras/*
+  src/filters/*
+  src/integrators/*
+  src/lights/*
+  src/materials/*
+  src/samplers/*
+  src/shapes/*
+  src/textures/*
+  src/media/*
+  src/cloud/*
+  src/messages/*
+  src/util/*
+  src/net/*
+  src/storage/*
+  src/execution/*
+  src/execution/meow/*
+ )
 
 INCLUDE_DIRECTORIES ( src )
 INCLUDE_DIRECTORIES ( src/core )
+
+# Visual Studio source folders
+SOURCE_GROUP (core REGULAR_EXPRESSION src/core/.*)
+SOURCE_GROUP (ext REGULAR_EXPRESSION src/ext/.*)
+SOURCE_GROUP (accelerators REGULAR_EXPRESSION src/accelerators/.*)
+SOURCE_GROUP (cameras REGULAR_EXPRESSION src/cameras/.*)
+SOURCE_GROUP (filters REGULAR_EXPRESSION src/filters/.*)
+SOURCE_GROUP (integrators REGULAR_EXPRESSION src/integrators/.*)
+SOURCE_GROUP (lights REGULAR_EXPRESSION src/lights/.*)
+SOURCE_GROUP (materials REGULAR_EXPRESSION src/materials/.*)
+SOURCE_GROUP (samplers REGULAR_EXPRESSION src/samplers/.*)
+SOURCE_GROUP (shapes REGULAR_EXPRESSION src/shapes/.*)
+SOURCE_GROUP (textures REGULAR_EXPRESSION src/textures/.*)
+SOURCE_GROUP (media REGULAR_EXPRESSION src/media/.*)
 
 ###########################################################################
 # pbrt libraries and executables
@@ -503,14 +549,23 @@ IF (WIN32)
   SET_TARGET_PROPERTIES ( pbrt PROPERTIES OUTPUT_NAME libpbrt )
 ENDIF()
 
+INCLUDE(FindProtobuf)
+FIND_PACKAGE(Protobuf REQUIRED)
+
+INCLUDE(FindOpenSSL)
+FIND_PACKAGE(OpenSSL REQUIRED)
+
 SET(ALL_PBRT_LIBS
   pbrt
+  pbrt_messages
   ${CMAKE_THREAD_LIBS_INIT}
   ${OPENEXR_LIBS}
   glog
   Ptex_static
   ${ZLIB_LIBRARY}
   ${ZeroMQ_LIBRARY}
+  ${Protobuf_LIBRARIES}
+  ${OPENSSL_LIBRARIES}
 )
 
 # Main renderer
@@ -537,6 +592,57 @@ ADD_SANITIZERS ( obj2pbrt )
 
 ADD_EXECUTABLE ( cyhair2pbrt src/tools/cyhair2pbrt.cpp )
 ADD_SANITIZERS ( cyhair2pbrt )
+
+## Cloud rendering
+# pbrt-do
+ADD_EXECUTABLE ( pbrt_do src/cloud/do.cpp )
+ADD_SANITIZERS ( pbrt_do )
+
+SET_TARGET_PROPERTIES ( pbrt_do PROPERTIES OUTPUT_NAME "pbrt-do" )
+TARGET_COMPILE_FEATURES ( pbrt_do PRIVATE ${PBRT_CXX11_FEATURES} )
+TARGET_LINK_LIBRARIES ( pbrt_do ${ALL_PBRT_LIBS} )
+
+# pbrt-genrays
+ADD_EXECUTABLE ( pbrt_genrays src/cloud/genrays.cpp )
+ADD_SANITIZERS ( pbrt_genrays )
+
+SET_TARGET_PROPERTIES ( pbrt_genrays PROPERTIES OUTPUT_NAME "pbrt-genrays" )
+TARGET_COMPILE_FEATURES ( pbrt_genrays PRIVATE ${PBRT_CXX11_FEATURES} )
+TARGET_LINK_LIBRARIES ( pbrt_genrays ${ALL_PBRT_LIBS} )
+
+# pbrt-aggregate
+ADD_EXECUTABLE ( pbrt_aggregate src/cloud/aggregate.cpp )
+ADD_SANITIZERS ( pbrt_aggregate )
+
+SET_TARGET_PROPERTIES ( pbrt_aggregate PROPERTIES OUTPUT_NAME "pbrt-aggregate" )
+TARGET_COMPILE_FEATURES ( pbrt_aggregate PRIVATE ${PBRT_CXX11_FEATURES} )
+TARGET_LINK_LIBRARIES ( pbrt_aggregate ${ALL_PBRT_LIBS} )
+
+# pbrt-lambda-master
+ADD_EXECUTABLE ( pbrt_lambda_master src/cloud/lambda-master.cpp )
+ADD_SANITIZERS ( pbrt_lambda_master )
+
+SET_TARGET_PROPERTIES ( pbrt_lambda_master PROPERTIES OUTPUT_NAME "pbrt-lambda-master" )
+TARGET_COMPILE_FEATURES ( pbrt_lambda_master PRIVATE ${PBRT_CXX11_FEATURES} )
+TARGET_LINK_LIBRARIES ( pbrt_lambda_master ${ALL_PBRT_LIBS} )
+
+# pbrt-lambda-worker
+ADD_EXECUTABLE ( pbrt_lambda_worker src/cloud/lambda-worker.cpp )
+SET_TARGET_PROPERTIES ( pbrt_lambda_worker PROPERTIES OUTPUT_NAME "pbrt-lambda-worker" )
+TARGET_COMPILE_FEATURES ( pbrt_lambda_worker PRIVATE ${PBRT_CXX11_FEATURES} )
+set(STRIP_SYMBOLS "")
+IF(CMAKE_BUILD_TYPE MATCHES RELEASE)
+  set(STRIP_SYMBOLS "-s")
+ENDIF()
+TARGET_LINK_LIBRARIES ( pbrt_lambda_worker ${ALL_PBRT_LIBS} dl z unwind lzma -static -Wl,-allow-multiple-definition ${STRIP_SYMBOLS} -Wl,--whole-archive -lpthread -Wl,--no-whole-archive)
+
+# pbrt-lambda-master
+ADD_EXECUTABLE ( pbrt_lambda_aggregate src/cloud/lambda-aggregate.cpp )
+ADD_SANITIZERS ( pbrt_lambda_aggregate )
+
+SET_TARGET_PROPERTIES ( pbrt_lambda_aggregate PROPERTIES OUTPUT_NAME "pbrt-lambda-aggregate" )
+TARGET_COMPILE_FEATURES ( pbrt_lambda_aggregate PRIVATE ${PBRT_CXX11_FEATURES} )
+TARGET_LINK_LIBRARIES ( pbrt_lambda_aggregate ${ALL_PBRT_LIBS} )
 
 # Unit test
 

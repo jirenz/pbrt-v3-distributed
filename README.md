@@ -10,9 +10,10 @@ Theory to Implementation*, by [Matt Pharr](http://pharr.org/matt), [Wenzel
 Jakob](http://www.mitsuba-renderer.org/~wenzel/), and Greg Humphreys.  As
 before, the code is available under the BSD license.
 
-The [pbrt website](http://pbrt.org) has general information about
-both the *Physically Based Rendering* book as well as many other resources
-for pbrt.
+The [pbrt website](http://pbrt.org) has general information about both the
+*Physically Based Rendering* book as well as many other resources for pbrt.
+As of October 2018, the full [text of the book](http://www.pbr-book.org) is
+now available online, for free.
 
 Example scenes
 --------------
@@ -46,7 +47,7 @@ them. :-)
 Building pbrt
 -------------
 
-To check out pbrt together with all dependencies, be sure to use the
+To check out pbrt together with all source dependencies, be sure to use the
 `--recursive` flag when cloning the repository, i.e.
 ```bash
 $ git clone --recursive https://github.com/mmp/pbrt-v3/
@@ -57,64 +58,153 @@ command to also fetch the dependencies:
 ```bash
 $ git submodule update --init --recursive
 ```
+
+### Library Dependencies
+
+Our version of pbrt is dependent on the following libraries (listed by their
+apt package name):
+* `libprotobuf-dev`
+* `libcrypto++-dev`
+* `libssl-dev`
+* `libunwind-dev`
+* `liblzma-dev`
+
+Before building, you'll need to install each of these using your package manager.
+On Ubuntu this is done by running something of the form:
+
+    apt install <package-name>
+
+### Tool Dependencies
+
+Building our version of pbrt requires that you have the following tools
+installed on your system (listed by their apt package name):
+* `protobuf-compiler`
+
+Before building you should install them using your package manager.
+
+
+### CMake
 pbrt uses [cmake](http://www.cmake.org/) for its build system.  On Linux
-and OS X, cmake is available via most package management systems.  For
-Windows, or to build it from source, see the [cmake downloads
-page](http://www.cmake.org/download/).
+and OS X, cmake is available via most package management systems.  To get
+cmake for Windows, or to build it from source, see the [cmake downloads
+page](http://www.cmake.org/download/).  Once you have cmake, the next step
+depends on your operating system.
 
-* For command-line builds on Linux and OS X, once you have cmake installed,
-  create a new directory for the build, change to that directory, and run
-  `cmake [path to pbrt-v3]`. A Makefile will be created in that
-  current directory.  Run `make -j8`, to build pbrt, the obj2pbrt and imgtool
-  utilities, and an executable that runs pbrt's unit tests.
-* To make an XCode project file on OS X, run `cmake -G Xcode [path to pbrt-v3]`.
-* Finally, on Windows, the cmake GUI will create MSVC solution files that
-  you can load in MSVC.
+### Makefile builds (Linux, other Unixes, and Mac) ###
 
-### Debug and Release Builds ###
+Create a new directory for the build, change to that directory, and run
+`cmake [path to pbrt-v3]`. A Makefile will be created in the current
+directory.  Next, run `make` to build pbrt, the obj2pbrt and imgtool
+utilities, and an executable that runs pbrt's unit tests.  Depending on the
+number of cores in your system, you will probably want to supply make with
+the `-j` parameter to specify the number of compilation jobs to run in
+parallel (e.g. `make -j8`).
 
-By default, the build files that are created that will compile an optimized
+By default, the makefiles that are created that will compile an optimized
 release build of pbrt. These builds give the highest performance when
 rendering, but many runtime checks are disabled in these builds and
 optimized builds are generally difficult to trace in a debugger.
 
 To build a debug version of pbrt, set the `CMAKE_BUILD_TYPE` flag to
-`Debug` when you run cmake to create build files to make a debug build. For
-example, when running cmake from the command line, provide it with the
-argument `-DCMAKE_BUILD_TYPE=Debug`. Then build pbrt using the resulting
-build files. (You may want to keep two build directories, one for release
-builds and one for debug builds, so that you don't need to switch back and
-forth.)
+`Debug` when you run cmake to create build files to make a debug build.  To
+do so, provide cmake with the argument `-DCMAKE_BUILD_TYPE=Debug` and build
+pbrt using the resulting makefiles. (You may want to keep two build
+directories, one for release builds and one for debug builds, so that you
+don't need to switch back and forth.)
 
 Debug versions of the system run much more slowly than release
 builds. Therefore, in order to avoid surprisingly slow renders when
 debugging support isn't desired, debug versions of pbrt print a banner
 message indicating that they were built for debugging at startup time.
 
+### Xcode ###
+
+To make an Xcode project on OS X, run `cmake -G Xcode [path to pbrt-v3]`.
+A `PBRT-V3.xcodeproj` project file that can be opened in Xcode.  Note that
+the default build settings have an optimization level of "None"; you'll
+almost certainly want to choose "Faster" or "Fastest".
+
+### MSVC on Windows ###
+
+On Windows, first point the cmake GUI at the directory with pbrt's source
+code.  Create a separate directory to hold the result of the build
+(potentially just a directory named "build" inside the pbrt-v3 directory)
+and set that for "Where to build the binaries" in the GUI.
+
+Next, click "Configure".  Note that you will want to choose the "Win64"
+generator for your MSVC installation unless you have a clear reason to need
+a 32-bit build of pbrt.  Once cmake has finished the configuration step,
+click "Generate"; when that's done, there will be a "PBRT-V3.sln" file in
+the build directory you specified. Open that up in MSVC and you're ready to
+go.
+
 ### Build Configurations ###
 
-There are two configuration settings that must be set at compile time. The
-first controls whether pbrt uses 32-bit or 64-bit values for floating-point
-computation, and the second controls whether tristimulus RGB values or
-sampled spectral values are used for rendering.  (Both of these aren't
-amenable to being chosen at runtime, but must be determined at compile time
-for efficiency).
+There are two configuration settings that must be set when configuring the
+build. The first controls whether pbrt uses 32-bit or 64-bit values for
+floating-point computation, and the second controls whether tristimulus RGB
+values or sampled spectral values are used for rendering.  (Both of these
+aren't amenable to being chosen at runtime, but must be determined at
+compile time for efficiency).  The cmake configuration variables
+`PBRT_FLOAT_AS_DOUBLE` and `PBRT_SAMPLED_SPECTRUM` configure them,
+respectively.
 
-To change them from their defaults (respectively, 32-bit
-and RGB.), edit the file `src/core/pbrt.h`.
+If you're using a GUI version of cmake, those settings should be available
+in the list of configuration variables; set them as desired before choosing
+'Generate'.
 
-To select 64-bit floating point values, remove the comment symbol before
-the line:
-```
-//#define PBRT_FLOAT_AS_DOUBLE
-```
-and recompile the system.
+With command-line cmake, their values can be specified when you cmake via
+`-DPBRT_FLOAT_AS_DOUBLE=1`, for example.
 
-To select full-spectral rendering, comment out the first of these two
-typedefs and remove the comment from the second one:
-```
-typedef RGBSpectrum Spectrum;
-// typedef SampledSpectrum Spectrum;
-```
-Again, don't forget to recompile after making this change.
+Running Distributed PBRT
+------------------------
 
+### Environmental Variables
+
+Before running the distributed version of pbrt, you must have the following environmental variables set:
+   * `AWS_ACCESS_KEY_ID`
+   * `AWS_SECRET_ACCESS_KEY`
+   * `AWS_REGION`
+   * `PBRT_LAMBDA_ROLE`
+
+### Network
+
+Your machine must have a public IP.
+
+### Storage
+
+You must (in advance) create a pbrt dump of a scene, and copy that dump to an s3 bucket.
+
+You can copy folders to buckets using `aws s3 cp --recursive <path-to-folder>
+s3://<s3-bucket-name>`
+
+### Runnning
+
+Distributed pbrt has two programs, a master and a worker. The master can be invoked as
+
+```
+pbrt-lambda-master <path-to-pdrt-dump> <public-port> <n-lambdas> <public-ip>:<public-port> s3://<s3-bucket-name>?region=<aws-region> <aws-region>
+```
+
+And the worker as
+
+```
+pbrt-lambda-worker <public-ip> <public-port> s3://<s3-bucket-name>?region=<aws-region>
+```
+
+You may actually run all of these locally! However, by setting <n-lambdas> to
+be greater than 0, the master will fire up lambda instances running the worker
+program.
+
+### Changing the worker binary
+
+To change the binary that the AWS Lambda workers run, you must execute
+
+```
+./src/remote/create-function.py --pbrt-lambda-worker <path-to-pbrt-lambda-worker> --delete
+```
+
+### Seeing the result
+
+In the folder where the master is executing, you will find an image file with
+the result. It is updated in real time.

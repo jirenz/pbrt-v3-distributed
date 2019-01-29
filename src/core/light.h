@@ -39,9 +39,10 @@
 #define PBRT_CORE_LIGHT_H
 
 // core/light.h*
-#include "pbrt.h"
-#include "memory.h"
 #include "interaction.h"
+#include "memory.h"
+#include "pbrt.h"
+#include "pbrt.pb.h"
 
 namespace pbrt {
 
@@ -57,6 +58,16 @@ inline bool IsDeltaLight(int flags) {
     return flags & (int)LightFlags::DeltaPosition ||
            flags & (int)LightFlags::DeltaDirection;
 }
+
+enum class LightType {
+    Distant,
+    Diffuse,
+    GonioPhotometric,
+    Infinite,
+    Point,
+    Projection,
+    Spot
+};
 
 // Light Declarations
 class Light {
@@ -77,6 +88,8 @@ class Light {
                                Float *pdfDir) const = 0;
     virtual void Pdf_Le(const Ray &ray, const Normal3f &nLight, Float *pdfPos,
                         Float *pdfDir) const = 0;
+
+    virtual LightType GetType() const = 0;
 
     // Light Public Data
     const int flags;

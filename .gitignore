@@ -6,6 +6,7 @@ src/ext/glog
 src/ext/ptex
 src/ext/veclib
 .sconsign.dblite
+
 build/
 *.exr
 *.stdout
@@ -26,3 +27,6 @@ workspace
 # obj2pbrt
 # pbrt
 # pbrt_test
+
+/build
+/build-debug
