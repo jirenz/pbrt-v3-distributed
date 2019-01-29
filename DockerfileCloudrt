@@ -18,19 +18,7 @@ RUN apt-get update && apt-get install -y \
 	libprotobuf-dev \
 	protobuf-compiler
 
-
 RUN pip3 install awscli --upgrade --user
-
-WORKDIR /protobuf
-RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protobuf-cpp-3.6.1.tar.gz \
-	&& tar -xvzf protobuf-cpp-3.6.1.tar.gz \
-	&& rm protobuf-cpp-3.6.1.tar.gz
-WORKDIR /protobuf/protobuf-3.6.1
-RUN ./configure 
-RUN make
-RUN make check
-RUN make install
-RUN ldconfig
 
 WORKDIR /app
 COPY cmake /app/cmake
@@ -42,7 +30,10 @@ RUN rm -rf /app/build
 WORKDIR /app/build
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
 RUN cmake .. 
-RUN make
+WORKDIR /app/build/src/messages/
+RUN make -j$(nproc)
+WORKDIR /app/build
+RUN make -j$(nproc)
 RUN make install
 COPY python-scheduler /app/python-scheduler
 RUN pip3 install -e /app/python-scheduler/
