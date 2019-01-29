@@ -38,9 +38,10 @@ COPY src /app/src
 COPY CMakeLists.txt /app/CMakeLists.txt
 COPY LICENSE.txt /app/LICENSE.txt
 COPY README.md /app/README.md
+RUN rm -rf /app/build
 WORKDIR /app/build
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
-RUN cmake -G 'Unix Makefiles' .. 
+RUN cmake .. 
 RUN make
 RUN make install
 COPY python-scheduler /app/python-scheduler
