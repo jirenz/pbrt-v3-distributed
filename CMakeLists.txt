@@ -387,7 +387,7 @@ find_library(ZeroMQ_LIBRARY
         PATHS ${PC_ZeroMQ_LIBRARY_DIRS}
         )
 INCLUDE_DIRECTORIES(${ZeroMQ_INCLUDE_DIR})
-=======
+
 # Protobuf
 
 ADD_SUBDIRECTORY(src/messages)
