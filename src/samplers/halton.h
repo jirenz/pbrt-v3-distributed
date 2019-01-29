@@ -41,6 +41,7 @@
 // samplers/halton.h*
 #include "sampler.h"
 #include "lowdiscrepancy.h"
+#include "pbrt.pb.h"
 
 namespace pbrt {
 
@@ -53,6 +54,8 @@ class HaltonSampler : public GlobalSampler {
     int64_t GetIndexForSample(int64_t sampleNum) const;
     Float SampleDimension(int64_t index, int dimension) const;
     std::unique_ptr<Sampler> Clone(int seed);
+
+    SamplerType GetType() const { return SamplerType::Halton; }
 
   private:
     // HaltonSampler Private Data

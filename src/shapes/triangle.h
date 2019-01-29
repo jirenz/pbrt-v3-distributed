@@ -41,6 +41,7 @@
 // shapes/triangle.h*
 #include "shape.h"
 #include "stats.h"
+#include "accelerators/bvh.h"
 #include <map>
 
 namespace pbrt {
@@ -93,6 +94,8 @@ class Triangle : public Shape {
     // reference point p.
     Float SolidAngle(const Point3f &p, int nSamples = 0) const;
 
+    ShapeType GetType() const { return ShapeType::Triangle; }
+
   private:
     // Triangle Private Methods
     void GetUVs(Point2f uv[3]) const {
@@ -111,6 +114,8 @@ class Triangle : public Shape {
     std::shared_ptr<TriangleMesh> mesh;
     const int *v;
     int faceIndex;
+
+    friend BVHAccel;
 };
 
 std::vector<std::shared_ptr<Shape>> CreateTriangleMesh(

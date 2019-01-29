@@ -82,6 +82,7 @@
 #include "materials/subsurface.h"
 #include "materials/translucent.h"
 #include "materials/uber.h"
+#include "messages/utils.h"
 #include "samplers/halton.h"
 #include "samplers/maxmin.h"
 #include "samplers/random.h"
@@ -115,6 +116,9 @@
 #include "textures/wrinkled.h"
 #include "media/grid.h"
 #include "media/homogeneous.h"
+#include "cloud/integrator.h"
+#include "cloud/bvh.h"
+#include "cloud/manager.h"
 
 #include <map>
 #include <stdio.h>
@@ -183,6 +187,9 @@ struct RenderOptions {
     std::map<std::string, std::vector<std::shared_ptr<Primitive>>> instances;
     std::vector<std::shared_ptr<Primitive>> *currentInstance = nullptr;
     bool haveScatteringMedia = false;
+
+    // Dumping the scene data
+    std::vector<protobuf::Light> protoLights;
 };
 
 // MaterialInstance represents both an instance of a material as well as
@@ -209,6 +216,14 @@ struct GraphicsState {
         TextureParams tp(empty, empty, *floatTextures, *spectrumTextures);
         std::shared_ptr<Material> mtl(CreateMatteMaterial(tp));
         currentMaterial = std::make_shared<MaterialInstance>("matte", mtl, ParamSet());
+
+        if (PbrtOptions.dumpScene) {
+          int id =
+              global::manager.getNextId(ObjectType::Material, mtl.get());
+          auto writer =
+              global::manager.GetWriter(ObjectType::Material, id);
+          writer->write(material::to_protobuf("matte", tp));
+        }
     }
     std::shared_ptr<Material> GetMaterialForShape(const ParamSet &geomParams);
     MediumInterface CreateMediumInterface();
@@ -291,8 +306,8 @@ class TransformCache {
 
     void Clear() {
         transformCacheBytes += arena.TotalAllocated() + hashTable.size() * sizeof(Transform *);
-        hashTable.resize(512);
         hashTable.clear();
+        hashTable.resize(512);
         hashTableOccupancy = 0;
         arena.Reset();
     }
@@ -605,10 +620,69 @@ std::shared_ptr<Material> MakeMaterial(const std::string &name,
             "Use \"path\" or \"volpath\".",
             name.c_str(), renderOptions->IntegratorName.c_str());
 
+    if (PbrtOptions.dumpScene && PbrtOptions.dumpMaterials && material) {
+        const uint32_t id =
+            global::manager.getNextId(ObjectType::Material, material);
+        auto writer =
+            global::manager.GetWriter(ObjectType::Material, id);
+        writer->write(material::to_protobuf(name, mp));
+
+        /* record dependencies from material to textures */
+        for (const std::string &name : mp.GetUsedFloatTextures()) {
+            auto tex = mp.GetFloatTextureOrNull(name).get();
+            if (global::manager.hasId(tex)) {
+                const uint32_t texId = global::manager.getId(tex);
+                global::manager.recordDependency(
+                    {ObjectType::Material, id},
+                    {ObjectType::FloatTexture, texId});
+            }
+        }
+
+        for (const std::string &name : mp.GetUsedSpectrumTextures()) {
+            auto tex = mp.GetSpectrumTextureOrNull(name).get();
+            if (global::manager.hasId(tex)) {
+                const uint32_t texId = global::manager.getId(tex);
+                global::manager.recordDependency(
+                    {ObjectType::Material, id},
+                    {ObjectType::SpectrumTexture, texId});
+            }
+        }
+    }
+
     mp.ReportUnused();
     if (!material) Error("Unable to create material \"%s\"", name.c_str());
     else ++nMaterialsCreated;
+
     return std::shared_ptr<Material>(material);
+}
+
+Optional<uint32_t> storeTexture(const std::string &name, ParamSet &tp) {
+    if (name == "ptex" || name == "imagemap") {
+        std::string currentName = tp.FindOneFilename("filename", "");
+        if (currentName.length() == 0) {
+            return {false};
+        }
+
+        tp.EraseString("filename");
+
+        const uint32_t textureId = global::manager.getTextureId(currentName);
+        const std::string newFilename =
+            SceneManager::getFileName(ObjectType::Texture, textureId);
+        const std::string newPath =
+            global::manager.getScenePath() + "/" + newFilename;
+
+        if (!roost::exists(newPath)) {
+            roost::copy_then_rename(currentName, newPath);
+        }
+
+        std::unique_ptr<std::string[]> filename(new std::string[1]);
+        filename[0] = std::string(newFilename);
+        tp.AddString("filename", move(filename), 1);
+
+        return {true, textureId};
+    }
+
+    return {false};
 }
 
 std::shared_ptr<Texture<Float>> MakeFloatTexture(const std::string &name,
@@ -644,6 +718,29 @@ std::shared_ptr<Texture<Float>> MakeFloatTexture(const std::string &name,
     else
         Warning("Float texture \"%s\" unknown.", name.c_str());
     tp.ReportUnused();
+
+    if (PbrtOptions.dumpScene && PbrtOptions.dumpMaterials) {
+        /* step one: if there are any path names, rewrite them and copy files */
+        ParamSet params{tp.GetGeomParams()};
+        const auto textureId = storeTexture(name, params);
+        TextureParams newTp{params, params, *graphicsState.floatTextures,
+                            *graphicsState.spectrumTextures};
+
+        /* step two: write the texture */
+        const uint32_t id =
+            global::manager.getNextId(ObjectType::FloatTexture, tex);
+        auto writer =
+            global::manager.GetWriter(ObjectType::FloatTexture, id);
+        writer->write(float_texture::to_protobuf(name, tex2world, newTp));
+
+        /* step three: record the dependencies */
+        if (textureId.initialized()) {
+            global::manager.recordDependency(
+                {ObjectType::FloatTexture, id},
+                {ObjectType::Texture, *textureId});
+        }
+    }
+
     return std::shared_ptr<Texture<Float>>(tex);
 }
 
@@ -680,6 +777,26 @@ std::shared_ptr<Texture<Spectrum>> MakeSpectrumTexture(
     else
         Warning("Spectrum texture \"%s\" unknown.", name.c_str());
     tp.ReportUnused();
+
+    if (PbrtOptions.dumpScene && PbrtOptions.dumpMaterials) {
+        ParamSet params{tp.GetGeomParams()};
+        const auto textureId = storeTexture(name, params);
+        TextureParams newTp{params, params, *graphicsState.floatTextures,
+                            *graphicsState.spectrumTextures};
+
+        const uint32_t id =
+            global::manager.getNextId(ObjectType::SpectrumTexture, tex);
+        auto writer =
+            global::manager.GetWriter(ObjectType::SpectrumTexture, id);
+        writer->write(spectrum_texture::to_protobuf(name, tex2world, newTp));
+
+        if (textureId.initialized()) {
+            global::manager.recordDependency(
+                {ObjectType::SpectrumTexture, id},
+                {ObjectType::Texture, *textureId});
+        }
+    }
+
     return std::shared_ptr<Texture<Spectrum>>(tex);
 }
 
@@ -781,6 +898,8 @@ std::shared_ptr<Primitive> MakeAccelerator(
         accel = CreateBVHAccelerator(std::move(prims), paramSet);
     else if (name == "kdtree")
         accel = CreateKdTreeAccelerator(std::move(prims), paramSet);
+    else if (name == "cloudbvh")
+        accel = CreateCloudBVH(paramSet);
     else
         Warning("Accelerator \"%s\" unknown.", name.c_str());
     paramSet.ReportUnused();
@@ -1204,6 +1323,7 @@ void pbrtTexture(const std::string &name, const std::string &type,
 
     TextureParams tp(params, params, *graphicsState.floatTextures,
                      *graphicsState.spectrumTextures);
+
     if (type == "float") {
         // Create _Float_ texture and store in _floatTextures_
         if (graphicsState.floatTextures->find(name) !=
@@ -1317,6 +1437,11 @@ void pbrtLightSource(const std::string &name, const ParamSet &params) {
         printf("%*sLightSource \"%s\" ", catIndentCount, "", name.c_str());
         params.Print(catIndentCount);
         printf("\n");
+    }
+
+    if (PbrtOptions.dumpScene) {
+        renderOptions->protoLights.push_back(
+            light::to_protobuf(name, params, curTransform[0]));
     }
 }
 
@@ -1612,6 +1737,16 @@ void pbrtWorldEnd() {
         std::unique_ptr<Integrator> integrator(renderOptions->MakeIntegrator());
         std::unique_ptr<Scene> scene(renderOptions->MakeScene());
 
+        if (PbrtOptions.dumpScene) {
+            auto writer = global::manager.GetWriter(ObjectType::Scene);
+            writer->write(to_protobuf(*scene));
+
+            /* dump the manifest file for this render */
+            auto manifestWriter =
+                global::manager.GetWriter(ObjectType::Manifest);
+            manifestWriter->write(global::manager.makeManifest());
+        }
+
         // This is kind of ugly; we directly override the current profiler
         // state to switch from parsing/scene construction related stuff to
         // rendering stuff and then switch it back below. The underlying
@@ -1654,8 +1789,26 @@ void pbrtWorldEnd() {
 }
 
 Scene *RenderOptions::MakeScene() {
+    ParamSet allAcceleratorParams = AcceleratorParams;
+
+    /* SADJAD: add a flag, so the constructor can know this is the root
+    accelerator. used for dumping the BVH */
+    std::unique_ptr<bool[]> scene_accelerator_val(new bool[1]);
+    scene_accelerator_val[0] = true;
+    allAcceleratorParams.AddBool("sceneaccelerator", std::move(scene_accelerator_val), 1);
+
+    /* Do we need to dump the lights? */
+    if (PbrtOptions.dumpScene) {
+        // let's dump the lights
+        auto writer = global::manager.GetWriter(ObjectType::Lights);
+        for (const auto &light : renderOptions->protoLights) {
+            writer->write(light);
+        }
+        renderOptions->protoLights.clear();
+    }
+
     std::shared_ptr<Primitive> accelerator =
-        MakeAccelerator(AcceleratorName, std::move(primitives), AcceleratorParams);
+        MakeAccelerator(AcceleratorName, std::move(primitives), allAcceleratorParams);
     if (!accelerator) accelerator = std::make_shared<BVHAccel>(primitives);
     Scene *scene = new Scene(accelerator, lights);
     // Erase primitives and lights from _RenderOptions_
@@ -1678,6 +1831,13 @@ Integrator *RenderOptions::MakeIntegrator() const {
         return nullptr;
     }
 
+    if (PbrtOptions.dumpScene) {
+        // let's dump the sampler
+        auto writer = global::manager.GetWriter(ObjectType::Sampler);
+        writer->write(sampler::to_protobuf(SamplerName, SamplerParams,
+                                          camera->film->GetSampleBounds()));
+    }
+
     Integrator *integrator = nullptr;
     if (IntegratorName == "whitted")
         integrator = CreateWhittedIntegrator(IntegratorParams, sampler, camera);
@@ -1696,6 +1856,8 @@ Integrator *RenderOptions::MakeIntegrator() const {
         integrator = CreateAOIntegrator(IntegratorParams, sampler, camera);
     } else if (IntegratorName == "sppm") {
         integrator = CreateSPPMIntegrator(IntegratorParams, camera);
+    } else if (IntegratorName == "cloud") {
+        integrator = CreateCloudIntegrator(IntegratorParams, sampler, camera);
     } else {
         Error("Integrator \"%s\" unknown.", IntegratorName.c_str());
         return nullptr;
@@ -1738,6 +1900,17 @@ Camera *RenderOptions::MakeCamera() const {
     Camera *camera = pbrt::MakeCamera(CameraName, CameraParams, CameraToWorld,
                                   renderOptions->transformStartTime,
                                   renderOptions->transformEndTime, film);
+
+    if(PbrtOptions.dumpScene) {
+        AnimatedTransform ac2w{
+            &CameraToWorld[0], renderOptions->transformStartTime,
+            &CameraToWorld[1], renderOptions->transformEndTime};
+        auto writer = global::manager.GetWriter(ObjectType::Camera);
+        writer->write(camera::to_protobuf(CameraName, CameraParams, ac2w,
+                                         FilmName, FilmParams, FilterName,
+                                         FilterParams));
+    }
+
     return camera;
 }
 
