@@ -39,10 +39,10 @@
 #define PBRT_LIGHTS_DISTANT_H
 
 // lights/distant.h*
-#include "pbrt.h"
 #include "light.h"
-#include "shape.h"
+#include "pbrt.h"
 #include "scene.h"
+#include "shape.h"
 
 namespace pbrt {
 
@@ -64,6 +64,8 @@ class DistantLight : public Light {
                        Float *pdfDir) const;
     void Pdf_Le(const Ray &, const Normal3f &, Float *pdfPos,
                 Float *pdfDir) const;
+
+    LightType GetType() const { return LightType::Distant; }
 
   private:
     // DistantLight Private Data

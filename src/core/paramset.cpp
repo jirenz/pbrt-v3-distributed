@@ -1,4 +1,3 @@
-
 /*
     pbrt source code is Copyright(c) 1998-2016
                         Matt Pharr, Greg Humphreys, and Wenzel Jakob.
@@ -35,6 +34,9 @@
 #include "paramset.h"
 #include "floatfile.h"
 #include "textures/constant.h"
+#include "util/path.h"
+
+#include <fstream>
 
 namespace pbrt {
 
@@ -105,6 +107,12 @@ void ParamSet::AddNormal3f(const std::string &name,
                            std::unique_ptr<Normal3f[]> values, int nValues) {
     EraseNormal3f(name);
     ADD_PARAM_TYPE(Normal3f, normals);
+}
+
+void ParamSet::AddSpectrum(const std::string &name,
+                           std::unique_ptr<Spectrum[]> values, int nValues) {
+    EraseSpectrum(name);
+    ADD_PARAM_TYPE(Spectrum, spectra);
 }
 
 void ParamSet::AddRGBSpectrum(const std::string &name,
@@ -833,6 +841,35 @@ reportUnusedMaterialParams(
                          }) == geom.end())
             Warning("Parameter \"%s\" not used", param->name.c_str());
     }
+}
+
+std::vector<std::string> TextureParams::GetUsedFloatTextures() const {
+    std::vector<std::string> used;
+#define GET_USED(v)                                                           \
+    for (size_t i = 0; i < (v).size(); ++i) {                                 \
+        if ((v)[i]->lookedUp && floatTextures.count((v)[i]->values[0]) > 0) { \
+            used.push_back((v)[i]->name);                                     \
+        }                                                                     \
+    }
+    GET_USED(geomParams.textures);
+    GET_USED(materialParams.textures);
+    return used;
+#undef GET_USED
+}
+
+std::vector<std::string> TextureParams::GetUsedSpectrumTextures() const {
+    std::vector<std::string> used;
+#define GET_USED(v)                                          \
+    for (size_t i = 0; i < (v).size(); ++i) {                \
+        if ((v)[i]->lookedUp &&                              \
+            spectrumTextures.count((v)[i]->values[0]) > 0) { \
+            used.push_back((v)[i]->name);                    \
+        }                                                    \
+    }
+    GET_USED(geomParams.textures);
+    GET_USED(materialParams.textures);
+    return used;
+#undef GET_USED
 }
 
 void TextureParams::ReportUnused() const {

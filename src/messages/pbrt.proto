@@ -1,0 +1,338 @@
+syntax = 'proto3';
+
+package pbrt.protobuf;
+
+message Point2f {
+    float x = 1;
+    float y = 2;
+}
+
+message Point2i {
+    int32 x = 1;
+    int32 y = 2;
+}
+
+message Point3f {
+    float x = 1;
+    float y = 2;
+    float z = 3;
+}
+
+message Vector2f {
+    float x = 1;
+    float y = 2;
+}
+
+message Vector3f {
+    float x = 1;
+    float y = 2;
+    float z = 3;
+}
+
+message Normal3f {
+    float x = 1;
+    float y = 2;
+    float z = 3;
+}
+
+message Matrix {
+    repeated float m = 1;
+}
+
+message AnimatedTransform {
+    Matrix start_transform = 1;
+    Matrix end_transform = 2;
+    float start_time = 3;
+    float end_time = 4;
+}
+
+message Bounds2i {
+    Point2i point_min = 1;
+    Point2i point_max = 2;
+}
+
+message Bounds2f {
+    Point2f point_min = 1;
+    Point2f point_max = 2;
+}
+
+message Bounds3f {
+    Point3f point_min = 1;
+    Point3f point_max = 2;
+}
+
+message TransformedPrimitive {
+    AnimatedTransform transform = 1;
+    int64 root_ref = 2;
+}
+
+// Shapes
+
+message TriangleMesh {
+    int32 n_triangles = 1;
+    int32 n_vertices = 2;
+    repeated int32 vertex_indices = 3;
+    repeated Point3f p = 4;
+    repeated Normal3f n = 5;  // Normal3f
+    repeated Vector3f s = 6;  // Vector3f
+    repeated Point2f uv = 7;
+    int64 material_id = 8;
+    int64 id = 9;
+}
+
+message Triangle {
+    int64 mesh_id = 1;
+    int64 tri_number = 2;
+}
+
+message BVHNode {
+    Bounds3f bounds = 1;
+    int64 left_ref = 2;
+    int64 right_ref = 3;
+    uint32 axis = 4;
+
+    repeated TransformedPrimitive transformed_primitives = 7;
+    repeated Triangle triangles = 8;
+}
+
+// RayState
+
+message RGBSpectrum {
+    repeated float c = 1;
+}
+
+message RayDifferential {
+    Point3f o = 1;
+    Vector3f d = 2;
+    float t_max = 3;
+    float time = 4;
+
+    bool has_differentials = 5;
+    Point3f rx_origin = 6;
+    Point3f ry_origin = 7;
+    Vector3f rx_direction = 8;
+    Vector3f ry_direction = 9;
+}
+
+message VisitNode {
+    uint32 treelet = 1;
+    uint32 node = 2;
+    Matrix transform = 3;
+}
+
+message RayState {
+    // SAMPLE DATA
+    uint64 sample_id = 1;
+    int64 sample_num = 2;
+    Point2i sample_pixel = 3;
+    Point2f sample_p_film = 4;
+    float sample_weight = 5;
+
+    RayDifferential ray = 6;
+    repeated VisitNode to_visit = 7;
+    VisitNode hit = 8;
+    RGBSpectrum beta = 9;
+    RGBSpectrum Ld = 10;
+    uint32 bounces = 11;
+    uint32 remaining_bounces = 12;
+    bool is_shadow_ray = 13;
+}
+
+message FinishedRay {
+    uint64 sample_id = 1;
+    Point2f p_film = 2;
+    float weight = 3;
+    RGBSpectrum L = 4;
+}
+
+// ParamSet
+
+message ParamSet {
+    // clang-format off
+    message ItemBool     { string name = 1; repeated bool values = 2; }
+    message ItemInt      { string name = 1; repeated int32 values = 2; }
+    message ItemFloat    { string name = 1; repeated float values = 2; }
+    message ItemPoint2f  { string name = 1; repeated Point2f values = 2; }
+    message ItemVector2f { string name = 1; repeated Vector2f values = 2; }
+    message ItemPoint3f  { string name = 1; repeated Point3f values = 2; }
+    message ItemVector3f { string name = 1; repeated Vector3f values = 2; }
+    message ItemNormal3f { string name = 1; repeated Normal3f values = 2; }
+    message ItemSpectrum { string name = 1; repeated RGBSpectrum values = 2; }
+    message ItemString   { string name = 1; repeated string values = 2; }
+    // clang-format on
+
+    repeated ItemBool bools = 1;
+    repeated ItemInt ints = 2;
+    repeated ItemFloat floats = 3;
+    repeated ItemPoint2f point2fs = 4;
+    repeated ItemVector2f vector2fs = 5;
+    repeated ItemPoint3f point3fs = 6;
+    repeated ItemVector3f vector3fs = 7;
+    repeated ItemNormal3f normals = 8;
+    repeated ItemSpectrum spectra = 9;
+    repeated ItemString strings = 10;
+    repeated ItemString textures = 11;
+}
+
+// Sampler
+
+message Sampler {
+    string name = 1;
+    ParamSet paramset = 2;
+    Bounds2i sample_bounds = 3;
+}
+
+// Lights
+
+message Light {
+    string name = 1;
+    ParamSet paramset = 2;
+    Matrix light_to_world = 3;
+}
+
+// Camera, Film & Filter
+
+message Camera {
+    message Film {
+        message Filter {
+            string name = 1;
+            ParamSet paramset = 2;
+        }
+
+        string name = 1;
+        ParamSet paramset = 2;
+        Filter filter = 3;
+    }
+
+    string name = 1;
+    ParamSet paramset = 2;
+    AnimatedTransform camera_to_world = 3;
+    Film film = 6;
+}
+
+// Samples
+
+message SampleData {
+    Point2f p_film = 1;
+    float weight = 2;
+}
+
+// Scene
+
+message Scene {
+    Bounds3f world_bound = 1;
+}
+
+// LambdaCommands
+
+message InvocationPayload {
+    string storage_backend = 1;
+    string coordinator = 2;
+}
+
+message ObjectKey {
+    uint32 type = 1;
+    uint64 id = 2;
+};
+
+message GetObjects {
+    repeated ObjectKey object_ids = 1;
+}
+
+message GenerateRays {
+    Bounds2i crop_window = 1;
+}
+
+message GetWorker {
+    uint32 treelet_id = 1;
+}
+
+message ConnectTo {
+    uint64 worker_id = 1;
+    uint32 treelet_id = 2;
+    string address = 3;
+}
+
+message ConnectRequest {
+    uint64 worker_id = 1;
+    int32 my_seed = 2;
+    int32 your_seed = 3;
+}
+
+message ConnectResponse {
+    uint64 worker_id = 1;
+    int32 my_seed = 2;
+    int32 your_seed = 3;
+    repeated uint32 treelet_ids = 4;
+}
+
+message RayStats {
+    uint64 sent_rays = 1;
+    uint64 received_rays = 2;
+    uint64 waiting_rays = 3;
+    uint64 processed_rays = 4;
+
+    repeated float trace_duration_percentiles = 5;
+    repeated float ray_durations = 6;
+}
+
+message QueueStats {
+    uint64 ray = 1;
+    uint64 finished = 2;
+    uint64 pending = 3;
+    uint64 out = 4;
+    uint64 connecting = 5;
+}
+
+message WorkerStats {
+  message ObjectRayStats {
+    ObjectKey id = 1;
+    RayStats stats = 2;
+  }
+
+  uint64 finished_paths = 1;
+  RayStats aggregate_stats = 2;
+  QueueStats queue_stats = 3;
+  repeated ObjectRayStats object_stats = 4;
+  map<string, float> time_per_action = 5;
+  float total_time = 6;
+}
+
+// Materials & Textures
+message TextureParams {
+  ParamSet geom_params = 1;
+  ParamSet material_params = 2;
+  map<string, int32> float_textures = 3;
+  map<string, int32> spectrum_textures = 4;
+}
+
+// Materials
+
+message Material {
+  string name = 1;
+  TextureParams texture_params = 2;
+}
+
+// Textures
+
+message FloatTexture {
+  string name = 1;
+  Matrix tex2world = 2;
+  TextureParams texture_params = 3;
+}
+
+message SpectrumTexture {
+  string name = 1;
+  Matrix tex2world = 2;
+  TextureParams texture_params = 3;
+}
+
+// Manifest
+
+message Manifest {
+  message Object {
+    ObjectKey id = 1;
+    repeated ObjectKey dependencies = 2;
+  };
+  repeated Object objects = 1;
+}

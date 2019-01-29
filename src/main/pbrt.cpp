@@ -36,6 +36,7 @@
 #include "api.h"
 #include "parser.h"
 #include "parallel.h"
+#include "cloud/manager.h"
 #include <glog/logging.h>
 
 using namespace pbrt;
@@ -69,6 +70,7 @@ Reformatting options:
                        standard output and convert all triangle meshes to
                        PLY files. Does not render an image.
 
+<<<<<<< HEAD
 Distributed options:
   --dist-master        This process is the master process of a distributed render
                        Will set nthreads=1 as master does not do rendering
@@ -80,6 +82,13 @@ Distributed options:
   --dist-context       A string to allow master confirm whether it is reading the same 
                        data as a given slave, default: "default_context"
   --dist-nworkers      Number of workers that a master will expecte to manage
+=======
+Cloud:
+  --dumpscene <dir>    Dump scene data to <dir>
+  --loadscene <dir>    Load scene data from <dir>
+  --nomaterial          Don't dump the texture information
+
+>>>>>>> sadjad/master
 )");
     exit(msg ? 1 : 0);
 }
@@ -170,6 +179,26 @@ int main(int argc, char *argv[]) {
             options.distContext = argv[++i];
         } else if (!strncmp(argv[i], "--dist-context=", 15)) {
             options.distContext = argv[i] + 15;
+        } else if (!strcmp(argv[i], "--dumpscene") ||
+                   !strcmp(argv[i], "-dumpscene")) {
+            if (i + 1 == argc)
+                usage("missing value after --dumpscene argument");
+            options.dumpScene = true;
+            global::manager.init(argv[++i]);
+        } else if (!strncmp(argv[i], "--dumpscene=", 12)) {
+            options.dumpScene = true;
+            global::manager.init(&argv[i][12]);
+        } else if (!strcmp(argv[i], "--loadscene") ||
+                   !strcmp(argv[i], "-loadscene")) {
+            if (i + 1 == argc)
+                usage("missing value after --loadscene argument");
+            options.loadScene = true;
+            global::manager.init(argv[++i]);
+        } else if (!strncmp(argv[i], "--loadscene=", 12)) {
+            options.loadScene = true;
+            global::manager.init(&argv[i][12]);
+        } else if (!strcmp(argv[i], "--nomaterial")) {
+            options.dumpMaterials = false;
         } else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-help") ||
                    !strcmp(argv[i], "-h")) {
             usage();
