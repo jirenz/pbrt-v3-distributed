@@ -619,30 +619,30 @@ TARGET_COMPILE_FEATURES ( pbrt_aggregate PRIVATE ${PBRT_CXX11_FEATURES} )
 TARGET_LINK_LIBRARIES ( pbrt_aggregate ${ALL_PBRT_LIBS} )
 
 # pbrt-lambda-master
-ADD_EXECUTABLE ( pbrt_lambda_master src/cloud/lambda-master.cpp )
-ADD_SANITIZERS ( pbrt_lambda_master )
+# ADD_EXECUTABLE ( pbrt_lambda_master src/cloud/lambda-master.cpp )
+# ADD_SANITIZERS ( pbrt_lambda_master )
 
-SET_TARGET_PROPERTIES ( pbrt_lambda_master PROPERTIES OUTPUT_NAME "pbrt-lambda-master" )
-TARGET_COMPILE_FEATURES ( pbrt_lambda_master PRIVATE ${PBRT_CXX11_FEATURES} )
-TARGET_LINK_LIBRARIES ( pbrt_lambda_master ${ALL_PBRT_LIBS} )
+# SET_TARGET_PROPERTIES ( pbrt_lambda_master PROPERTIES OUTPUT_NAME "pbrt-lambda-master" )
+# TARGET_COMPILE_FEATURES ( pbrt_lambda_master PRIVATE ${PBRT_CXX11_FEATURES} )
+# TARGET_LINK_LIBRARIES ( pbrt_lambda_master ${ALL_PBRT_LIBS} )
 
 # pbrt-lambda-worker
-ADD_EXECUTABLE ( pbrt_lambda_worker src/cloud/lambda-worker.cpp )
-SET_TARGET_PROPERTIES ( pbrt_lambda_worker PROPERTIES OUTPUT_NAME "pbrt-lambda-worker" )
-TARGET_COMPILE_FEATURES ( pbrt_lambda_worker PRIVATE ${PBRT_CXX11_FEATURES} )
-set(STRIP_SYMBOLS "")
-IF(CMAKE_BUILD_TYPE MATCHES RELEASE)
-  set(STRIP_SYMBOLS "-s")
-ENDIF()
-TARGET_LINK_LIBRARIES ( pbrt_lambda_worker ${ALL_PBRT_LIBS} dl z unwind lzma -static -Wl,-allow-multiple-definition ${STRIP_SYMBOLS} -Wl,--whole-archive -lpthread -Wl,--no-whole-archive)
+# ADD_EXECUTABLE ( pbrt_lambda_worker src/cloud/lambda-worker.cpp )
+# SET_TARGET_PROPERTIES ( pbrt_lambda_worker PROPERTIES OUTPUT_NAME "pbrt-lambda-worker" )
+# TARGET_COMPILE_FEATURES ( pbrt_lambda_worker PRIVATE ${PBRT_CXX11_FEATURES} )
+# set(STRIP_SYMBOLS "")
+# IF(CMAKE_BUILD_TYPE MATCHES RELEASE)
+#   set(STRIP_SYMBOLS "-s")
+# ENDIF()
+# TARGET_LINK_LIBRARIES ( pbrt_lambda_worker ${ALL_PBRT_LIBS} dl z unwind lzma -static -Wl,-allow-multiple-definition ${STRIP_SYMBOLS} -Wl,--whole-archive -lpthread -Wl,--no-whole-archive)
 
 # pbrt-lambda-master
-ADD_EXECUTABLE ( pbrt_lambda_aggregate src/cloud/lambda-aggregate.cpp )
-ADD_SANITIZERS ( pbrt_lambda_aggregate )
+# ADD_EXECUTABLE ( pbrt_lambda_aggregate src/cloud/lambda-aggregate.cpp )
+# ADD_SANITIZERS ( pbrt_lambda_aggregate )
 
-SET_TARGET_PROPERTIES ( pbrt_lambda_aggregate PROPERTIES OUTPUT_NAME "pbrt-lambda-aggregate" )
-TARGET_COMPILE_FEATURES ( pbrt_lambda_aggregate PRIVATE ${PBRT_CXX11_FEATURES} )
-TARGET_LINK_LIBRARIES ( pbrt_lambda_aggregate ${ALL_PBRT_LIBS} )
+# SET_TARGET_PROPERTIES ( pbrt_lambda_aggregate PROPERTIES OUTPUT_NAME "pbrt-lambda-aggregate" )
+# TARGET_COMPILE_FEATURES ( pbrt_lambda_aggregate PRIVATE ${PBRT_CXX11_FEATURES} )
+# TARGET_LINK_LIBRARIES ( pbrt_lambda_aggregate ${ALL_PBRT_LIBS} )
 
 # Unit test
 

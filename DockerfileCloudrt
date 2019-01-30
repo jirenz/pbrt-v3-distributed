@@ -10,13 +10,15 @@ RUN apt-key add - < Release.key
 RUN sh -c "echo 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/xUbuntu_18.10/ /' > /etc/apt/sources.list.d/network:messaging:zeromq:release-stable.list" 
 
 RUN apt-get update && apt-get install -y \
-	libzmq3-dev \
-	libcrypto++-dev \
-	libssl-dev \
-	libunwind-dev \
-	liblzma-dev \
-	libprotobuf-dev \
-	protobuf-compiler
+    libcrypto++-dev \
+    libssl-dev \
+    libunwind-dev \
+    liblzma-dev \
+    libprotobuf-dev \
+    protobuf-compiler \
+	libzmq5 \
+	libzmq5-dev
+# libpgm-dev
 
 RUN pip3 install awscli --upgrade --user
 
@@ -26,10 +28,12 @@ COPY src /app/src
 COPY CMakeLists.txt /app/CMakeLists.txt
 COPY LICENSE.txt /app/LICENSE.txt
 COPY README.md /app/README.md
+COPY .git /app/.git
+COPY .gitmodules /app/.gitmodules
 RUN rm -rf /app/build
 WORKDIR /app/build
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
-RUN cmake .. 
+RUN cmake -G 'Unix Makefiles' .. 
 WORKDIR /app/build/src/messages/
 RUN make -j$(nproc)
 WORKDIR /app/build
