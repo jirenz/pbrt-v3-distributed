@@ -41,6 +41,9 @@
 // materials/uber.h*
 #include "pbrt.h"
 #include "material.h"
+#include "gaussianmixture.h"
+#include "gaussianscatter.h"
+#include "multiscatter.h"
 
 namespace pbrt {
 
@@ -57,7 +60,8 @@ class UberMaterial : public Material {
                  const std::shared_ptr<Texture<Spectrum>> &opacity,
                  const std::shared_ptr<Texture<Float>> &eta,
                  const std::shared_ptr<Texture<Float>> &bumpMap,
-                 bool remapRoughness)
+                 bool remapRoughness,
+                 GaussianMultiScattering *ms = NULL)
         : Kd(Kd),
           Ks(Ks),
           Kr(Kr),
@@ -68,7 +72,7 @@ class UberMaterial : public Material {
           roughnessv(roughnessv),
           eta(eta),
           bumpMap(bumpMap),
-          remapRoughness(remapRoughness) {}
+          remapRoughness(remapRoughness), ms(ms) {}
 
     void ComputeScatteringFunctions(SurfaceInteraction *si, MemoryArena &arena,
                                     TransportMode mode,
@@ -80,6 +84,9 @@ class UberMaterial : public Material {
     std::shared_ptr<Texture<Float>> roughness, roughnessu, roughnessv, eta,
         bumpMap;
     bool remapRoughness;
+    
+    GaussianMultiScattering* ms;
+    
 };
 
 UberMaterial *CreateUberMaterial(const TextureParams &mp);

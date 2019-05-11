@@ -369,6 +369,7 @@ INCLUDE_DIRECTORIES(src/ext/cppzmq)
 #        )
 #INCLUDE_DIRECTORIES(${ZeroMQ_INCLUDE_DIR})
 INCLUDE_DIRECTORIES(/usr/local/cellar/zeromq/4.3.1_1/include)
+INCLUDE_DIRECTORIES (  /Users/fengxie/work/tensorflow_c_api/tensorflow/include )
 
 ###########################################################################
 # On to pbrt...
@@ -412,6 +413,9 @@ SET ( PBRT_CORE_SOURCE
   src/core/stats.cpp
   src/core/texture.cpp
   src/core/transform.cpp
+  src/core/gaussianscatter.cpp
+  src/core/gaussianmixture.cpp
+  src/core/mlbrdf.cpp
   )
 
 SET ( PBRT_CORE_HEADERS
@@ -456,6 +460,7 @@ SET ( PBRT_CORE_HEADERS
   src/core/stringprint.h
   src/core/texture.h
   src/core/transform.h
+  src/core/gaussianmixture.h 
   )
 
 FILE ( GLOB PBRT_SOURCE
@@ -513,6 +518,7 @@ SET(ALL_PBRT_LIBS
   Ptex_static
   ${ZLIB_LIBRARY}
   /usr/local/cellar/zeromq/4.3.1_1/lib/libzmq.a
+  /Users/fengxie/work/tensorflow_c_api/tensorflow/lib/libtensorflow.so
   #${ZeroMQ_LIBRARY}
 )
 

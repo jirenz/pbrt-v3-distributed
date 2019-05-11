@@ -41,6 +41,7 @@
 #include "stats.h"
 #include <stdarg.h>
 
+
 namespace pbrt {
 
 // BxDF Utility Functions
@@ -230,7 +231,11 @@ Spectrum MicrofacetReflection::f(const Vector3f &wo, const Vector3f &wi) const {
     if (cosThetaI == 0 || cosThetaO == 0) return Spectrum(0.);
     if (wh.x == 0 && wh.y == 0 && wh.z == 0) return Spectrum(0.);
     wh = Normalize(wh);
-    Spectrum F = fresnel->Evaluate(Dot(wi, wh));
+    //flip wh to be on the same side as shading n
+    if (wh.z < 0) wh *= -1;
+
+    Spectrum F (1.0);
+    if (fresnel) F = fresnel->Evaluate(Dot(wi, wh));
     return R * distribution->D(wh) * distribution->G(wo, wi) * F /
            (4 * cosThetaI * cosThetaO);
 }
@@ -254,7 +259,10 @@ Spectrum MicrofacetTransmission::f(const Vector3f &wo,
     Vector3f wh = Normalize(wo + wi * eta);
     if (wh.z < 0) wh = -wh;
 
-    Spectrum F = fresnel.Evaluate(Dot(wo, wh));
+    if (Dot(wo, wh) * Dot(wi, wh) > -1e-6) return Spectrum(0);
+
+    Spectrum F = 0;
+    if (!noFresnel) F = fresnel.Evaluate(Dot(wo, wh));
 
     Float sqrtDenom = Dot(wo, wh) + eta * Dot(wi, wh);
     Float factor = (mode == TransportMode::Radiance) ? (1 / eta) : 1;
@@ -374,6 +382,220 @@ bool FourierBSDFTable::GetWeightsAndOffset(Float cosTheta, int *offset,
                                            Float weights[4]) const {
     return CatmullRomWeights(nMu, mu, cosTheta, offset, weights);
 }
+
+Float computeJacobian(const Vector3f &wo, const Vector3f &wi, Float etaO, Float etaI) {
+    Vector3f h = etaI * wi + etaO * wo;
+
+    //if (fabs(h.z) < 1e-6 or fabs(wo.z) < 1e-6) return  0;
+
+    /*
+    float denom = wi.z * h.z * h.z;
+    denom *= denom;
+    if (denom < 1e-6) return 1;
+    
+    Float dxdxi = etaI * (h.z * wi.z + h.x * wi.x);
+    Float dydyi = etaI * (h.z * wi.z + h.y * wi.y);
+    Float dxdyi = etaI * (h.x * wi.y);
+    Float dydxi = etaI * (h.y * wi.x);
+    Float J = (dxdxi * dydyi - dydxi * dxdyi)/denom;
+    J *= wi.z;
+   
+    */
+
+    //denom = (wo(3) + wi(3));
+    //jacobian = abs(wo(3)* wi(3)  + wo(2)*wi(2) + wo(1)*wi(1) + 1)/denom; 
+
+    Float denom = h.z;
+    denom = denom * denom * denom;
+    //if (denom < 1e-6) return 0;
+    Float jacobian = fabs((Dot(wo, wi) + 1.0) / denom);
+    return jacobian;
+}
+
+Spectrum computeMultiScattering(Vector3f &wo, Vector3f &wi, Float alpha, 
+    Float etaO, Float etaI, 
+    const GaussianScatter* gs, RealNVPScatterSpectrum *realNVP, const MicrofacetDistribution *distribution) {
+
+    //if (realNVP) {
+    if (1) {
+        Vector3f tmp = wo;
+        wo = wi;
+        wi = tmp;
+    }
+    Float cosThetaI = AbsCosTheta(wi);
+    Float cosThetaO = AbsCosTheta(wo);
+
+    //std::cout << "\nwo: "<< wo << " wi: "<< wi <<"\n";
+
+    // handle degenerate cases
+    if (cosThetaI == 0 || cosThetaO == 0) return Spectrum(0);
+
+    Float phi = atan2(wo.y, wo.x);
+    if (fabs(phi) > 1e-5) {
+        phi = Degrees(phi);
+        Transform rotation = RotateZ(-phi);
+        wo = rotation(wo);
+        if (fabs(wo.y) > 1e-3 || fabs(wo.z) < 1e-6) {
+            std::cout << "phi: " << phi << "mu: " << cosThetaO << "\n";
+            std::cout<< "wo: " << wo << "\n";
+            std::cout<< "rotation:" << rotation << "\n";
+            fflush(stdout);
+        }
+        assert(fabs(wo.y) < 1e-5);
+        wi = rotation(wi);
+    }
+
+
+    if (wo.z < 0) {
+        wo = -wo;
+        wi = -wi;
+        //wh.x = -wh.x;
+        //wh.z = -wh.z;
+    }
+    Float thetaO = acos(fabs(wo.z));
+    if (thetaO < 1e-4) thetaO = 1e-4;
+    if (thetaO > .5 * M_PI -1e-5) thetaO =  .5 * M_PI -1e-5;
+
+    //Float thetaI = acos(fabs(wi.z));
+
+    //Float phiI = atan2(wi.y, wi.x);
+
+    //std::cout << "thetaO: "<< Degrees(thetaO) << " phiO: "<< phi <<  " thetaI: "<< Degrees(thetaI) << " phiI: "<< Degrees(phiI) << "\n";
+    
+    Vector3f wh = Normalize(etaI * wi + etaO*wo);
+    if (fabs(wh.z) < 1e-5) return 0;
+    if (fabs(cosThetaO - 1) < 1e-5 and cosThetaI < 1e-5) return 0;
+    
+    // calculate probability in slope domain using fitted GMM
+    Float x = wh.x/wh.z;
+    Float y = wh.y/wh.z;
+
+    Float J = computeJacobian(wo, wi, etaO, etaI); 
+    Float sbrdf =  (distribution->D(wh) * distribution->G(wo, wi) /
+           (4 * cosThetaI * cosThetaO)) ;
+    
+    //if (Degrees(thetaO) > 85.0 || Degrees(thetaI) > 85.0) return sbrdf;
+    Float p = 0;
+
+    if (realNVP!=NULL) {
+        Spectrum p = realNVP->eval(alpha, fabs(wo.z), fabs(Dot(wo, wh)), thetaO, Vector2f(x, y)); 
+        Spectrum multiS =  p *  J  / cosThetaI; 
+        //std::cout << "MSBRDF: " << multiS << " SBRDF: " << sbrdf <<"\n";
+        return multiS;
+
+    } else {
+        Float zo = abs(wo.z);
+        zo = zo > 1? 1: zo;
+        Float zi = abs(wi.z);
+        zi = zi > 1? 1: zi;
+        if (gs != NULL) p = gs->prob(x,y, zo, zi);
+        Float multi = 0;
+        if (gs->isEnergyOnly()) {
+            multi = p /cosThetaI;
+        } else { 
+            multi =  p * J / cosThetaI;
+        }
+        return  multi;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+//////MultiScatterReflection:  Feng
+////////////////////////////////////////////////////////////////////////////////////////////
+Spectrum MultiScatterReflection::f(const Vector3f &woO, const Vector3f &wiO) const {
+    Spectrum singleScatter (0);
+    if (!realNVP) singleScatter = MicrofacetReflection::f(woO, wiO);
+
+    Vector3f wo = Normalize(woO);
+    Vector3f wi = Normalize(wiO);
+    Vector3f wh = Normalize(wo + wi);
+    
+    //if (wh.z < 1e-6) return singleScatter;
+    if (wo.z * wi.z < 0) return 0;
+
+    //printf("reached multi scattering eval\n");
+    //fflush(stdout);
+
+    Spectrum F(1.0);
+    Spectrum MF(1.0);
+    if (getFresnel() && !realNVP) {
+        F = getFresnel()->Evaluate(Dot(wi, wh));
+        auto F2 = F * F;
+        auto F3 = F2 * F;
+        auto F4 = F2 * F2;
+        MF =  F2 * 0.8 + F3 * 0.18 +  F4 * .02;
+
+        //Vector3f energyRatio(0.9575, 0.780155, 0.314);
+        //Float values[3] = {0.9575, 0.780155, 0.314};
+        //MF= Spectrum::FromRGB(values);
+    }
+
+    if (wo.z * wi.z < 0) { 
+        return singleScatter; 
+    }
+
+    /*
+    if (wo.z < 1e-6 || wi.z < 1e-6) {
+        return singleScatter;
+    }
+    */
+
+    Float MFValues[3];
+    MF.ToRGB(MFValues);
+    //std::cout << "MF: "<< MFValues[0] << " " << MFValues[1] << " " << MFValues[2] << "\n";
+    Spectrum multi = computeMultiScattering(wo, wi, alpha, 1, 1, gs, realNVP, distribution);
+
+    if (realNVP) return multi;
+    else return  singleScatter + R * MF * multi;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+//////MultiScatterTransmission:  Feng
+////////////////////////////////////////////////////////////////////////////////////////////
+Spectrum MultiScatterTransmission::f(const Vector3f &woO, const Vector3f &wiO) const {
+    Vector3f wo = Normalize(woO);
+    Vector3f wi = Normalize(wiO);
+    
+    if (SameHemisphere(wo, wi)) return 0;  // transmission only
+
+    Float cosThetaO = CosTheta(wo);
+    Float cosThetaI = CosTheta(wi);
+    if (cosThetaI == 0 || cosThetaO == 0) return Spectrum(0);
+
+    // Compute $\wh$ from $\wo$ and $\wi$ for microfacet transmission
+    bool entering = CosTheta(wo) > 0; 
+    Float etaI = entering ? etaA : etaB;
+    Float etaT = entering ? etaB : etaA;
+
+    Float eta = entering ? (etaB / etaA) : (etaA / etaB);
+    Vector3f wh = Normalize(etaI * wo +  etaT * wi);
+    if (wh.z < 0) wh = -wh;
+    
+    if (Dot(wo, wh) * Dot(wi, wh) > -1e-6) return Spectrum(0);
+
+    //Float FrDielectric(Float cosThetaI, Float etaI, Float etaT) 
+    Float F = FrDielectric(Dot(wo, wh), etaA, etaB);
+    if (!noFresnel) F =  1.0 - F;
+    if (F < 0) F = 0;
+   
+    /* 
+    Float sqrtDenom = Dot(wo, wh) * etaI  + etaT * Dot(wi, wh);
+    Spectrum singleScatter =  F  *  T *
+           std::abs(distribution->D(wh) * distribution->G(wo, wi) * etaT * etaT*
+                    AbsDot(wi, wh) * AbsDot(wo, wh) /
+                    (cosThetaI * cosThetaO * sqrtDenom * sqrtDenom));
+    
+    Spectrum multi(singleScatter);
+    */
+
+    //factor term cancel out eta * eta in the single scatter evaluation function
+    //original equation from walter paper is FDG * absdot(wi, wh) * absdot(wo, wh) / {dot(wi,n) * dot(wo, n) * sqrtDenom^2}
+
+    Spectrum ms =  F * T *  computeMultiScattering(entering? wo:wi, entering? wi: wo, alpha, etaI, etaT, gs, realNVP, distribution);
+    Spectrum multi(ms);
+    return multi;
+}
+
 
 Spectrum BxDF::Sample_f(const Vector3f &wo, Vector3f *wi, const Point2f &u,
                         Float *pdf, BxDFType *sampledType) const {
@@ -640,6 +862,7 @@ Float FourierBSDF::Pdf(const Vector3f &wo, const Vector3f &wi) const {
     return (rho > 0 && Y > 0) ? (Y / rho) : 0;
 }
 
+
 Spectrum BxDF::rho(const Vector3f &w, int nSamples, const Point2f *u) const {
     Spectrum r(0.);
     for (int i = 0; i < nSamples; ++i) {
@@ -672,6 +895,15 @@ Spectrum BSDF::f(const Vector3f &woW, const Vector3f &wiW,
     ProfilePhase pp(Prof::BSDFEvaluation);
     Vector3f wi = WorldToLocal(wiW), wo = WorldToLocal(woW);
     if (wo.z == 0) return 0.;
+    /*
+    if (fabs(wo.z) > 1 || fabs(wi.z) > 1) {
+        std::cout<< " wo " << wo << "\n";
+        std::cout<< " wi " << wi << "\n";
+        std::cout<< " ss " << ss << "\n";
+        std::cout<< " ts " << ts << "\n";
+        std::cout<< " ns " << ns << "\n";
+    }
+    */
     bool reflect = Dot(wiW, ng) * Dot(woW, ng) > 0;
     Spectrum f(0.f);
     for (int i = 0; i < nBxDFs; ++i)
@@ -722,7 +954,7 @@ Spectrum BSDF::Sample_f(const Vector3f &woWorld, Vector3f *wiWorld,
             bxdf = bxdfs[i];
             break;
         }
-    CHECK(bxdf != nullptr);
+    CHECK_NOTNULL(bxdf);
     VLOG(2) << "BSDF::Sample_f chose comp = " << comp << " / matching = " <<
         matchingComps << ", bxdf: " << bxdf->ToString();
 
@@ -753,7 +985,7 @@ Spectrum BSDF::Sample_f(const Vector3f &woWorld, Vector3f *wiWorld,
     if (matchingComps > 1) *pdf /= matchingComps;
 
     // Compute value of BSDF for sampled direction
-    if (!(bxdf->type & BSDF_SPECULAR)) {
+    if (!(bxdf->type & BSDF_SPECULAR) && matchingComps > 1) {
         bool reflect = Dot(*wiWorld, ng) * Dot(woWorld, ng) > 0;
         f = 0.;
         for (int i = 0; i < nBxDFs; ++i)
@@ -790,5 +1022,127 @@ std::string BSDF::ToString() const {
         s += StringPrintf("\n  bxdfs[%d]: ", i) + bxdfs[i]->ToString();
     return s + std::string(" ]");
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+////GaussianBSDF:  Mandy and Feng ////////////////////////////////////////////////////////////
+////3D fitting of both single and multiple scattering/////////////////////////////////////////
+////Has artifacts don't use //////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+//GaussianBSDF methods
+//Uniform sampling for now for Sample_f and Pdf computation
+//TODO: add importance sampling of GMM
+Spectrum GaussianBSDF::Sample_f(const Vector3f &wo, Vector3f *wi,
+                                          const Point2f &u, Float *pdf,
+                                          BxDFType *sampledType) const {
+    //return MicrofacetReflection::Sample_f(wo, wi, u, pdf, sampledType);
+
+    //Uniform sampling for gaussian bsdf 
+    Vector3f wo_normalized = Normalize(wo);
+
+    // Sample gaussian orientation $\wh$ and reflected direction $\wi$
+    *wi = CosineSampleHemisphere(u);
+    *wi = Normalize(*wi);
+    if (wo.z < 0) wi->z *= -1;
+    if (!SameHemisphere(wo_normalized, *wi) || wi->z == 0) return Spectrum(0.f);
+    *pdf = Pdf(wo_normalized, *wi);
+    return f(wo_normalized, *wi);
+}
+
+Float GaussianBSDF::Pdf(const Vector3f &wo, const Vector3f &wi) const {
+    //return MicrofacetReflection::Pdf(wo, wi);
+    
+    //Uniform sampling for gaussian bsdf 
+    return SameHemisphere(wo, wi) ? AbsCosTheta(wi) * InvPi : 0;
+}
+
+/*
+//uncomment to debug for negative wo and wi
+void check_omega_oi_negative(const Vector3f &wo, const Vector3f &wi) {
+    std::cout<< "wo " << wo<< " wi " << wi << "\n";
+    fflush(stdout);
+}
+*/
+
+Spectrum GaussianBSDF::f(const Vector3f &woO, const Vector3f &wiO) const {
+
+    //This evaluation is here only for potential debugging    
+    //Spectrum mf =  MicrofacetReflection::f(woO, wiO);
+
+    Vector3f wo = Normalize(woO);
+    Vector3f wi = Normalize(wiO);
+
+    if (wo.z * wi.z < 0) { 
+        return Spectrum(0.);
+    }
+
+    if (wo.z < 1e-6 || wi.z < 1e-6) {
+        return 0;
+    }
+    Float cosThetaI = AbsCosTheta(wi);
+    Float cosThetaO = AbsCosTheta(wo);
+    // handle degenerate cases
+    if (cosThetaI == 0 || cosThetaO == 0) return Spectrum(0.);
+
+    Float phi = atan2(wo.y, wo.x);
+    if (phi < 0) phi += 2.0 * M_PI;
+    if (fabs(phi) > 1e-5) {
+        phi = Degrees(phi);
+        Transform rotation = RotateZ(-phi);
+        wo = rotation(wo);
+        if (fabs(wo.y) > 1e-3) {
+            std::cout << "phi: " << phi << "mu: " << cosThetaO << "\n";
+            std::cout<< "woO " << woO<< " wo " << wo << "\n";
+            std::cout<< "rotation" << rotation << "\n";
+            fflush(stdout);
+        }
+        assert(fabs(wo.y) < 1e-5);
+        wi = rotation(wi);
+    }
+
+    wo.z = abs(wo.z);
+    wi.z = abs(wi.z);
+   
+    Float J = computeJacobian(wi, wo, 1, 1);
+    
+    Vector3f wh = wi + wo;
+    wh = Normalize(wh);
+    
+    // calculate probability in slope domain using fitted GMM
+    Float x = wh.x/wh.z;
+    Float y = wh.y/wh.z;
+    Float zo = wo.z > 1? 1: wo.z;
+    zo = acos(zo); 
+    if (zo <0 || zo >= M_PI * .5 || isNaN(zo)) {
+        std::cout<< "woO " << woO<< " wo " << wo << "\n";
+        std::cout << "gaussian brdf value: 0" << "\n";
+        fflush(stdout);
+        return Spectrum(0);
+    }
+    Float p = gm->prob(x,y,zo);
+    if (isNaN(p)) {
+        std::cout<< "has NaN prob" << "\n";
+        fflush(stdout);
+        return Spectrum(0);
+    }
+    Spectrum brdf =  p * J / cosThetaI;
+
+    /*
+    if (mf[1] > 2.0 * brdf[1]) {
+        std::cout << "beckmann brdf value:" << mf << "\n";
+        std::cout << "gaussian brdf value:" << brdf << "\n";
+        fflush(stdout);
+    }
+    */
+    return brdf;
+}
+
+std::string GaussianBSDF::ToString() const {
+     return MicrofacetReflection::ToString();
+     //TODO: add gaussian mixture string rep
+}
+
+
 
 }  // namespace pbrt
