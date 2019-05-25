@@ -77,6 +77,7 @@ Distributed options:
   --dist-port          Port of the master process: 
                        Master process listens on this port
                        Slave processes connect to this port on dist-host
+                       default: 18348
   --dist-context       A string to allow master confirm whether it is reading the same 
                        data as a given slave, default: "default_context"
   --dist-nworkers      Number of workers that a master will expecte to manage

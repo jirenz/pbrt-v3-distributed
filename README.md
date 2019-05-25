@@ -1,3 +1,42 @@
+# Distributed Pbrt
+We use [zmq](http://zeromq.org) to allow distribution of pbrt rendering onto multiple machines. 
+
+## Installation
+You need to install zmq before compiling the sources. On Mac, use homebrew
+```bash
+brew install zmq
+```
+On linus, use 
+```bash
+echo "deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/Debian_9.0/ ./" >> /etc/apt/sources.list
+wget https://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/Debian_9.0/Release.key -O- | sudo apt-key add
+apt-get install libzmq3-dev
+```
+Check [Zmq official website](http://zeromq.org/intro:get-the-software) for details.
+
+## Running.
+A distributed rendering task can be run by running a master server and multiple slaves. For example, in `examples/test_scene`, you can run
+```bash
+pbrt sphere.pbrt --dist-master --dist-nworkers 2 
+```
+and in another terminal window
+```bash
+pbrt sphere.pbrt --dist-slave --nthreads 2
+```
+And the image should render and both processes should exit.
+
+In general, the process with `--dist-master` flag is the server that sends out workload and receives rendered tiles. You need to specify `--dist-nworkers` to be the **total number of threads** that will be doing the rendering.
+
+You can use `--host`  and `--port` to specify which host the master listens to and the slaves connect to. To check the defaults, see 
+```bash
+pbrt --help
+```
+
+## Cloud support
+There are functionalities that allows this distributed pbrt to be running on a cloud (e.g. a python scheduler, dockerfile, kubernetes support). Documentation is under construction.
+
+===============
+Original Pbrt Documentation
 pbrt, Version 3
 ===============
 
