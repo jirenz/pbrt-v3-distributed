@@ -484,9 +484,9 @@ Spectrum computeMultiScattering(Vector3f &wo, Vector3f &wi, Float alpha,
         return multiS;
 
     } else {
-        Float zo = abs(wo.z);
+        Float zo = fabs(wo.z);
         zo = zo > 1? 1: zo;
-        Float zi = abs(wi.z);
+        Float zi = fabs(wi.z);
         zi = zi > 1? 1: zi;
         if (gs != NULL) p = gs->prob(x,y, zo, zi);
         Float multi = 0;

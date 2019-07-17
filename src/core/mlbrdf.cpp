@@ -37,7 +37,7 @@ RealNVPScatterSpectrum::eval(float thetaI, float alpha, const Vector2f &sampleN)
     
     Float value[3];
     value[0] = nvpScatter[0].eval(thetaI, alpha, sampleN);
-    if (isnan(value[0])) value[0] = 0;
+    if (std::isnan(value[0])) value[0] = 0;
     return value[0] * energyRatio[0];
 
     /*
