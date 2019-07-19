@@ -417,7 +417,7 @@ Spectrum computeMultiScattering(Vector3f &wo, Vector3f &wi, Float alpha,
     const GaussianScatter* gs, RealNVPScatterSpectrum *realNVP, const MicrofacetDistribution *distribution) {
 
     //if (realNVP) {
-    if (1) {
+    if (0) {
         Vector3f tmp = wo;
         wo = wi;
         wi = tmp;
