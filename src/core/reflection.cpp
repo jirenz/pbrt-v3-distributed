@@ -412,12 +412,12 @@ Float computeJacobian(const Vector3f &wo, const Vector3f &wi, Float etaO, Float 
     return jacobian;
 }
 
-Spectrum computeMultiScattering(Vector3f &wo, Vector3f &wi, Float alpha, 
+Spectrum computeMultiScattering(Vector3f &wo, Vector3f &wi, Float alpha, bool flip,
     Float etaO, Float etaI, 
     const GaussianScatter* gs, RealNVPScatterSpectrum *realNVP, const MicrofacetDistribution *distribution) {
 
     //if (realNVP) {
-    if (0) {
+    if (flip) {
         Vector3f tmp = wo;
         wo = wi;
         wi = tmp;
@@ -543,7 +543,7 @@ Spectrum MultiScatterReflection::f(const Vector3f &woO, const Vector3f &wiO) con
     Float MFValues[3];
     MF.ToRGB(MFValues);
     //std::cout << "MF: "<< MFValues[0] << " " << MFValues[1] << " " << MFValues[2] << "\n";
-    Spectrum multi = computeMultiScattering(wo, wi, alpha, 1, 1, gs, realNVP, distribution);
+    Spectrum multi = computeMultiScattering(wo, wi, alpha, flip, 1, 1, gs, realNVP, distribution);
 
     if (realNVP) return multi;
     else return  singleScatter + R * MF * multi;
@@ -591,7 +591,7 @@ Spectrum MultiScatterTransmission::f(const Vector3f &woO, const Vector3f &wiO) c
     //factor term cancel out eta * eta in the single scatter evaluation function
     //original equation from walter paper is FDG * absdot(wi, wh) * absdot(wo, wh) / {dot(wi,n) * dot(wo, n) * sqrtDenom^2}
 
-    Spectrum ms =  F * T *  computeMultiScattering(entering? wo:wi, entering? wi: wo, alpha, etaI, etaT, gs, realNVP, distribution);
+    Spectrum ms =  F * T *  computeMultiScattering(entering? wo:wi, entering? wi: wo, alpha, false, etaI, etaT, gs, realNVP, distribution);
     Spectrum multi(ms);
     return multi;
 }

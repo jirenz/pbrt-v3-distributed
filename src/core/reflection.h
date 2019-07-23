@@ -562,10 +562,11 @@ class MultiScatterReflection : public MicrofacetReflection {
     MultiScatterReflection(const Spectrum &R, MicrofacetDistribution *distribution, Fresnel *fresnel, 
                            const GaussianScatter *gs,
                            Float alpha = 0.5,
-                           RealNVPScatterSpectrum* realNVP = NULL):
+                           RealNVPScatterSpectrum* realNVP = NULL,
+                           bool flip = true):
                            MicrofacetReflection(R, distribution, fresnel), 
                            gs(gs),
-                           alpha(alpha), realNVP(realNVP){}
+                           alpha(alpha), realNVP(realNVP), flip(flip){}
 
     Spectrum f(const Vector3f &wo, const Vector3f &wi) const;
     /*
@@ -579,6 +580,7 @@ class MultiScatterReflection : public MicrofacetReflection {
     const GaussianScatter *gs;
     Float alpha;
     RealNVPScatterSpectrum* realNVP;
+    bool flip;
 };
 
 //Microfacet BSDF with fitted multiscattering components (Feng)
